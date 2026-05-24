@@ -141,6 +141,8 @@ create table trial_accounts (
 ```
 
 After the trial or 20 replies are used, clients are prompted to upgrade to Pro or Agency.
+When Stripe sends `checkout.session.completed`, the webhook activates the matching trial
+account by checkout email.
 
 ## Stripe Checkout
 

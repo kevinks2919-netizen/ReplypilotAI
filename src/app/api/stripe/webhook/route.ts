@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripeClient } from "@/lib/stripe";
+import { activateAccountByEmail } from "@/lib/trial-auth";
 
 export const runtime = "nodejs";
 
@@ -24,9 +25,15 @@ export async function POST(request: NextRequest) {
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
+      const customerEmail = session.customer_details?.email;
+
+      if (customerEmail) {
+        await activateAccountByEmail(customerEmail);
+      }
+
       console.log("Stripe checkout completed", {
         sessionId: session.id,
-        customerEmail: session.customer_details?.email,
+        customerEmail,
         plan: session.metadata?.plan
       });
     }

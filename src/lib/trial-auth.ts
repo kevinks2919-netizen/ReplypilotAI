@@ -108,7 +108,7 @@ export async function requireActiveTrialAccount() {
     };
   }
 
-  if (account.replies_used >= account.reply_limit) {
+  if (account.plan_status !== "active" && account.replies_used >= account.reply_limit) {
     return {
       ok: false as const,
       status: 402,
@@ -122,7 +122,24 @@ export async function requireActiveTrialAccount() {
 export async function incrementReplyUsage(account: TrialAccount) {
   const updated = {
     ...account,
-    replies_used: Math.min(account.reply_limit, account.replies_used + 1)
+    replies_used:
+      account.plan_status === "active"
+        ? account.replies_used + 1
+        : Math.min(account.reply_limit, account.replies_used + 1)
+  };
+
+  await updateAccount(updated);
+  return toPublicTrialAccount(updated);
+}
+
+export async function activateAccountByEmail(email: string) {
+  const account = await findAccountByEmail(normalizeEmail(email));
+
+  if (!account) return null;
+
+  const updated = {
+    ...account,
+    plan_status: "active" as const
   };
 
   await updateAccount(updated);

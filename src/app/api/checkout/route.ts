@@ -6,6 +6,7 @@ import {
   isPaidPlan,
   stripePlans
 } from "@/lib/stripe";
+import { getCurrentTrialAccount } from "@/lib/trial-auth";
 
 export const runtime = "nodejs";
 
@@ -31,7 +32,9 @@ export async function POST(request: NextRequest) {
 
   const origin = request.headers.get("origin") ?? new URL(request.url).origin;
   const baseUrl = getAppBaseUrl(origin);
-  const customerEmail = typeof body?.email === "string" ? body.email.trim() : undefined;
+  const account = await getCurrentTrialAccount();
+  const customerEmail =
+    account?.email ?? (typeof body?.email === "string" ? body.email.trim() : undefined);
 
   try {
     const session = await stripe.checkout.sessions.create({
@@ -44,9 +47,11 @@ export async function POST(request: NextRequest) {
       ],
       customer_email: customerEmail || undefined,
       allow_promotion_codes: true,
+      client_reference_id: account?.id,
       metadata: {
         app: "replypilot_ai",
-        plan
+        plan,
+        accountId: account?.id ?? ""
       },
       success_url: `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/checkout/cancel?plan=${plan}`

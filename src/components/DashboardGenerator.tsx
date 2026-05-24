@@ -41,7 +41,8 @@ export function DashboardGenerator({ account }: { account: PublicTrialAccount })
   const canGenerate = useMemo(() => message.trim().length > 0, [message]);
   const usageLimit = trialAccount.reply_limit;
   const usageCount = trialAccount.replies_used;
-  const repliesRemaining = Math.max(0, usageLimit - usageCount);
+  const isPaidAccount = trialAccount.plan_status === "active";
+  const repliesRemaining = isPaidAccount ? Infinity : Math.max(0, usageLimit - usageCount);
   const trialEndsAt = new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
@@ -157,7 +158,13 @@ export function DashboardGenerator({ account }: { account: PublicTrialAccount })
         <div className="mb-5 rounded-lg border border-ink/10 bg-mist/70 p-4 text-sm leading-6 text-ink/68">
           Signed in as <span className="font-semibold text-ink">{trialAccount.email}</span>.
           Trial ends on <span className="font-semibold text-ink">{trialEndsAt}</span>.
-          You have <span className="font-semibold text-ink">{repliesRemaining}</span> demo replies remaining.
+          {isPaidAccount ? (
+            <span className="font-semibold text-ink"> Monthly subscription active.</span>
+          ) : (
+            <>
+              You have <span className="font-semibold text-ink">{repliesRemaining}</span> demo replies remaining.
+            </>
+          )}
         </div>
 
         {limitError ? (
@@ -202,7 +209,7 @@ export function DashboardGenerator({ account }: { account: PublicTrialAccount })
           <button
             type="button"
             onClick={handleGenerate}
-            disabled={!canGenerate || isGenerating || repliesRemaining === 0}
+            disabled={!canGenerate || isGenerating || (!isPaidAccount && repliesRemaining === 0)}
             className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-plum disabled:cursor-not-allowed disabled:bg-ink/40 md:w-auto"
           >
             {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
@@ -308,8 +315,10 @@ export function DashboardGenerator({ account }: { account: PublicTrialAccount })
           <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/55">
             Current plan
           </p>
-          <p className="mt-2 text-lg font-semibold">Free</p>
-          <p className="mt-1 text-sm text-white/60">14-day demo with 20 total replies</p>
+          <p className="mt-2 text-lg font-semibold">{isPaidAccount ? "Paid" : "Trial"}</p>
+          <p className="mt-1 text-sm text-white/60">
+            {isPaidAccount ? "Monthly subscription active" : "14-day demo with 20 total replies"}
+          </p>
         </div>
       </aside>
     </div>
