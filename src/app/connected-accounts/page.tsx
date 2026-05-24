@@ -49,7 +49,7 @@ const workflow = [
 ];
 
 export default async function ConnectedAccountsPage() {
-  const account = await getCurrentTrialAccount();
+  const account = await getCurrentTrialAccount().catch(() => null);
 
   return (
     <main className="min-h-screen px-4 py-5 sm:px-8">

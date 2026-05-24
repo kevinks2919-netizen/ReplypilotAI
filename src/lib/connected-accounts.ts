@@ -417,7 +417,10 @@ async function readAutoReplyApprovals() {
 
   if (supabase) {
     const { data, error } = await supabase.from("auto_reply_approvals").select("*");
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (error.message.includes("auto_reply_approvals")) return [];
+      throw new Error(error.message);
+    }
     return Array.isArray(data) ? data.filter(isAutoReplyApproval) : [];
   }
 
