@@ -27,7 +27,7 @@ export type WaitlistSubmissionInput = {
 };
 
 export const waitlistDataFile = path.join(
-  process.cwd(),
+  process.env.VERCEL ? "/tmp" : process.cwd(),
   "data",
   "waitlist-submissions.json"
 );
