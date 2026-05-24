@@ -9,6 +9,9 @@ export function Footer() {
           <p className="mt-1 text-sm text-ink/56">
             Platform-safe reply workflows for creator agency inbox teams.
           </p>
+          <p className="mt-2 text-xs font-semibold text-ink/45">
+            Created by Kevin Kangni-Soukpe
+          </p>
         </div>
         <div className="flex flex-wrap gap-4 text-sm font-semibold text-ink/62">
           <Link href="/privacy" className="transition hover:text-coral">
