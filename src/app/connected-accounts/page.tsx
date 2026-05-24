@@ -44,7 +44,8 @@ const workflow = [
   "Client connects an approved account with OAuth.",
   "ReplyPilot AI reads inbound messages through official APIs.",
   "The app drafts safe reply options and triage signals.",
-  "A human reviews and sends from the approved workflow."
+  "Auto-reply can be enabled only for senders the client approves.",
+  "A human can pause approvals and review replies at any time."
 ];
 
 export default async function ConnectedAccountsPage() {
@@ -138,7 +139,8 @@ export default async function ConnectedAccountsPage() {
             <h2 className="mt-4 text-2xl font-semibold text-ink">Launch-safe promise</h2>
             <p className="mt-3 text-sm leading-6 text-ink/64">
               Before any auto-reply feature ships, ReplyPilot AI should support account
-              consent, human review, audit history, and platform-specific compliance checks.
+              consent, sender-level approvals, human review, audit history, and
+              platform-specific compliance checks.
             </p>
           </div>
           <div className="rounded-lg border border-ink/10 bg-white/82 p-5">

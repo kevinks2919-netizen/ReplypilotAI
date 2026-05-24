@@ -26,15 +26,34 @@ export type GmailMessagePreview = {
   id: string;
   threadId: string;
   from: string;
+  fromEmail: string;
   subject: string;
   date: string;
   snippet: string;
+  autoReplyApproved: boolean;
+};
+
+export type AutoReplyApproval = {
+  id: string;
+  owner_account_id: string;
+  provider: "gmail" | "tiktok";
+  sender_identifier: string;
+  sender_label: string;
+  status: "approved" | "paused";
+  created_at: string;
+  updated_at: string;
 };
 
 const connectedAccountsDataFile = path.join(
   process.env.VERCEL ? "/tmp" : process.cwd(),
   "data",
   "connected-accounts.json"
+);
+
+const autoReplyApprovalsDataFile = path.join(
+  process.env.VERCEL ? "/tmp" : process.cwd(),
+  "data",
+  "auto-reply-approvals.json"
 );
 
 const gmailScopes = [
@@ -99,6 +118,12 @@ export async function getPublicConnectedAccounts(ownerAccountId: string) {
 export async function listGmailMessages(ownerAccountId: string) {
   const account = await getGmailAccount(ownerAccountId);
   if (!account) return [];
+  const approvals = await getAutoReplyApprovals(ownerAccountId);
+  const approvedSenders = new Set(
+    approvals
+      .filter((approval) => approval.provider === "gmail" && approval.status === "approved")
+      .map((approval) => approval.sender_identifier.toLowerCase())
+  );
 
   const freshAccount = await refreshGmailAccountIfNeeded(account);
   const listResponse = await gmailFetch<{ messages?: { id: string; threadId: string }[] }>(
@@ -114,10 +139,72 @@ export async function listGmailMessages(ownerAccountId: string) {
       freshAccount,
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`
     );
-    previews.push(toMessagePreview(detail));
+    previews.push(toMessagePreview(detail, approvedSenders));
   }
 
   return previews;
+}
+
+export async function getAutoReplyApprovals(ownerAccountId: string) {
+  const approvals = await readAutoReplyApprovals();
+  return approvals.filter((approval) => approval.owner_account_id === ownerAccountId);
+}
+
+export async function approveAutoReplySender(input: {
+  ownerAccountId: string;
+  provider: "gmail" | "tiktok";
+  senderIdentifier: string;
+  senderLabel: string;
+}) {
+  const now = new Date().toISOString();
+  const normalizedSender = input.senderIdentifier.trim().toLowerCase();
+  const approvals = await readAutoReplyApprovals();
+  const existing = approvals.find(
+    (approval) =>
+      approval.owner_account_id === input.ownerAccountId &&
+      approval.provider === input.provider &&
+      approval.sender_identifier.toLowerCase() === normalizedSender
+  );
+
+  const approval: AutoReplyApproval = {
+    id: existing?.id ?? randomUUID(),
+    owner_account_id: input.ownerAccountId,
+    provider: input.provider,
+    sender_identifier: normalizedSender,
+    sender_label: input.senderLabel.trim() || normalizedSender,
+    status: "approved",
+    created_at: existing?.created_at ?? now,
+    updated_at: now
+  };
+
+  await upsertAutoReplyApproval(approval);
+  return approval;
+}
+
+export async function pauseAutoReplySender(input: {
+  ownerAccountId: string;
+  provider: "gmail" | "tiktok";
+  senderIdentifier: string;
+}) {
+  const normalizedSender = input.senderIdentifier.trim().toLowerCase();
+  const approvals = await readAutoReplyApprovals();
+  const existing = approvals.find(
+    (approval) =>
+      approval.owner_account_id === input.ownerAccountId &&
+      approval.provider === input.provider &&
+      approval.sender_identifier.toLowerCase() === normalizedSender
+  );
+
+  if (!existing) return null;
+
+  const updated: AutoReplyApproval = {
+    ...existing,
+    status: "paused",
+    updated_at: new Date().toISOString()
+  };
+
+  await upsertAutoReplyApproval(updated);
+  return updated;
 }
 
 function getGmailRedirectUri() {
@@ -301,6 +388,57 @@ async function readConnectedAccounts() {
   return readLocalConnectedAccounts();
 }
 
+async function upsertAutoReplyApproval(approval: AutoReplyApproval) {
+  const supabase = getSupabaseAdminClient();
+
+  if (supabase) {
+    const { error } = await supabase
+      .from("auto_reply_approvals")
+      .upsert(approval, { onConflict: "owner_account_id,provider,sender_identifier" });
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  const approvals = await readLocalAutoReplyApprovals();
+  const nextApprovals = approvals.filter(
+    (item) =>
+      !(
+        item.owner_account_id === approval.owner_account_id &&
+        item.provider === approval.provider &&
+        item.sender_identifier.toLowerCase() === approval.sender_identifier.toLowerCase()
+      )
+  );
+  nextApprovals.push(approval);
+  await writeLocalAutoReplyApprovals(nextApprovals);
+}
+
+async function readAutoReplyApprovals() {
+  const supabase = getSupabaseAdminClient();
+
+  if (supabase) {
+    const { data, error } = await supabase.from("auto_reply_approvals").select("*");
+    if (error) throw new Error(error.message);
+    return Array.isArray(data) ? data.filter(isAutoReplyApproval) : [];
+  }
+
+  return readLocalAutoReplyApprovals();
+}
+
+async function readLocalAutoReplyApprovals() {
+  try {
+    const file = await readFile(autoReplyApprovalsDataFile, "utf-8");
+    const parsed = JSON.parse(file);
+    return Array.isArray(parsed) ? (parsed.filter(isAutoReplyApproval) as AutoReplyApproval[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeLocalAutoReplyApprovals(approvals: AutoReplyApproval[]) {
+  await mkdir(path.dirname(autoReplyApprovalsDataFile), { recursive: true });
+  await writeFile(autoReplyApprovalsDataFile, `${JSON.stringify(approvals, null, 2)}\n`, "utf-8");
+}
+
 async function readLocalConnectedAccounts() {
   try {
     const file = await readFile(connectedAccountsDataFile, "utf-8");
@@ -360,21 +498,33 @@ type GmailMessageDetail = {
   };
 };
 
-function toMessagePreview(message: GmailMessageDetail): GmailMessagePreview {
+function toMessagePreview(
+  message: GmailMessageDetail,
+  approvedSenders: Set<string>
+): GmailMessagePreview {
   const headers = message.payload?.headers ?? [];
+  const from = getHeader(headers, "From");
+  const fromEmail = extractEmailAddress(from);
 
   return {
     id: message.id,
     threadId: message.threadId,
-    from: getHeader(headers, "From"),
+    from,
+    fromEmail,
     subject: getHeader(headers, "Subject") || "(No subject)",
     date: getHeader(headers, "Date"),
-    snippet: message.snippet ?? ""
+    snippet: message.snippet ?? "",
+    autoReplyApproved: approvedSenders.has(fromEmail.toLowerCase())
   };
 }
 
 function getHeader(headers: { name?: string; value?: string }[], name: string) {
   return headers.find((header) => header.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
+}
+
+function extractEmailAddress(value: string) {
+  const match = value.match(/<([^>]+)>/);
+  return (match?.[1] ?? value).trim().toLowerCase();
 }
 
 function isConnectedAccount(value: unknown): value is ConnectedAccount {
@@ -393,5 +543,21 @@ function isConnectedAccount(value: unknown): value is ConnectedAccount {
     (account.status === "connected" || account.status === "needs_reauth") &&
     typeof account.created_at === "string" &&
     typeof account.updated_at === "string"
+  );
+}
+
+function isAutoReplyApproval(value: unknown): value is AutoReplyApproval {
+  if (!value || typeof value !== "object") return false;
+  const approval = value as Record<string, unknown>;
+
+  return (
+    typeof approval.id === "string" &&
+    typeof approval.owner_account_id === "string" &&
+    (approval.provider === "gmail" || approval.provider === "tiktok") &&
+    typeof approval.sender_identifier === "string" &&
+    typeof approval.sender_label === "string" &&
+    (approval.status === "approved" || approval.status === "paused") &&
+    typeof approval.created_at === "string" &&
+    typeof approval.updated_at === "string"
   );
 }

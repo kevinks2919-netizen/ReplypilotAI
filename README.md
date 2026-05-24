@@ -85,6 +85,25 @@ create table if not exists public.connected_accounts (
 );
 ```
 
+Create this table to store client-approved auto-reply senders:
+
+```sql
+create table if not exists public.auto_reply_approvals (
+  id uuid primary key default gen_random_uuid(),
+  owner_account_id uuid not null references public.trial_accounts(id) on delete cascade,
+  provider text not null check (provider in ('gmail', 'tiktok')),
+  sender_identifier text not null,
+  sender_label text not null,
+  status text not null default 'approved' check (status in ('approved', 'paused')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(owner_account_id, provider, sender_identifier)
+);
+```
+
+Auto-reply must stay disabled by default. A sender must be explicitly approved by
+the client before automated replies can be considered for that sender.
+
 TikTok direct message automation is not enabled in this MVP. Add it only through official
 TikTok-approved messaging access or an approved partner integration.
 

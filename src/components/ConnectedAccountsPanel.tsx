@@ -16,6 +16,7 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
   const [messages, setMessages] = useState<GmailMessagePreview[]>([]);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingSender, setPendingSender] = useState("");
 
   const gmailAccount = connectedAccounts.find((item) => item.provider === "gmail");
 
@@ -43,6 +44,43 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
       setError(loadError instanceof Error ? loadError.message : "Could not load Gmail messages.");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function updateAutoReplyApproval(message: GmailMessagePreview, action: "approve" | "pause") {
+    setPendingSender(message.fromEmail);
+    setError("");
+
+    try {
+      const response = await fetch("/api/connect/auto-reply-approvals", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          provider: "gmail",
+          senderIdentifier: message.fromEmail,
+          senderLabel: message.from,
+          action
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(typeof payload.error === "string" ? payload.error : "Could not update approval.");
+      }
+
+      setMessages((currentMessages) =>
+        currentMessages.map((item) =>
+          item.fromEmail === message.fromEmail
+            ? { ...item, autoReplyApproved: action === "approve" }
+            : item
+        )
+      );
+    } catch (approvalError) {
+      setError(approvalError instanceof Error ? approvalError.message : "Could not update approval.");
+    } finally {
+      setPendingSender("");
     }
   }
 
@@ -75,8 +113,8 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
           <h2 className="mt-4 text-2xl font-semibold text-ink">Gmail inbox preview</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/64">
             Connect Gmail with Google OAuth to preview recent inbox messages. ReplyPilot AI
-            keeps sending human-reviewed by default; full auto-send should stay off until
-            the client approves rules and compliance settings.
+            keeps sending human-reviewed by default. Automatic replies are allowed only for
+            specific senders the client approves below.
           </p>
         </div>
         <a
@@ -137,6 +175,37 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
                 <p className="text-xs text-ink/45">{message.date}</p>
               </div>
               <p className="mt-3 text-sm leading-6 text-ink/64">{message.snippet}</p>
+              <div className="mt-4 flex flex-col justify-between gap-3 rounded-lg bg-mist p-3 sm:flex-row sm:items-center">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">
+                    Auto-reply permission
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-ink">
+                    {message.autoReplyApproved ? "Approved for this sender" : "Manual review only"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateAutoReplyApproval(
+                      message,
+                      message.autoReplyApproved ? "pause" : "approve"
+                    )
+                  }
+                  disabled={pendingSender === message.fromEmail}
+                  className={`inline-flex min-h-10 items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                    message.autoReplyApproved
+                      ? "border border-ink/10 bg-white text-ink hover:border-coral hover:text-coral"
+                      : "bg-ink text-white hover:bg-plum"
+                  }`}
+                >
+                  {pendingSender === message.fromEmail
+                    ? "Updating..."
+                    : message.autoReplyApproved
+                      ? "Pause auto-reply"
+                      : "Approve auto-reply"}
+                </button>
+              </div>
             </article>
           ))
         ) : (
