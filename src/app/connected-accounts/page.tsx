@@ -48,8 +48,16 @@ const workflow = [
   "A human can pause approvals and review replies at any time."
 ];
 
-export default async function ConnectedAccountsPage() {
+type ConnectedAccountsPageProps = {
+  searchParams?: Promise<{
+    gmail?: string;
+  }>;
+};
+
+export default async function ConnectedAccountsPage({ searchParams }: ConnectedAccountsPageProps) {
   const account = await getCurrentTrialAccount().catch(() => null);
+  const params = await searchParams;
+  const gmailStatus = params?.gmail;
 
   return (
     <main className="min-h-screen px-4 py-5 sm:px-8">
@@ -130,6 +138,22 @@ export default async function ConnectedAccountsPage() {
         </section>
 
         <section className="mt-10">
+          {gmailStatus === "not_configured" ? (
+            <div className="mb-4 rounded-lg border border-coral/20 bg-coral/8 p-4 text-sm leading-6 text-coral">
+              Gmail is not configured yet. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+              and GOOGLE_REDIRECT_URI in Vercel Production environment variables, then redeploy.
+            </div>
+          ) : null}
+          {gmailStatus === "failed" ? (
+            <div className="mb-4 rounded-lg border border-coral/20 bg-coral/8 p-4 text-sm leading-6 text-coral">
+              Gmail connection failed. Check your Google OAuth redirect URI and Vercel env vars.
+            </div>
+          ) : null}
+          {gmailStatus === "connected" ? (
+            <div className="mb-4 rounded-lg border border-mint/20 bg-mint/10 p-4 text-sm leading-6 text-mint">
+              Gmail connected successfully.
+            </div>
+          ) : null}
           <ConnectedAccountsPanel account={account} />
         </section>
 
