@@ -118,6 +118,30 @@ ADMIN_PASSWORD=your_strong_admin_password
 
 Restart the dev server after changing it. The admin session is stored in an HTTP-only cookie for 8 hours.
 
+## Client Trial Accounts
+
+The `/login` page lets a client create credentials for a 14-day demo with 20 reply
+generations. The `/dashboard` route requires login, and `POST /api/generate-replies`
+enforces the trial limit on the server.
+
+For production, create this Supabase table so trial accounts persist:
+
+```sql
+create table trial_accounts (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  password_hash text not null,
+  trial_started_at timestamptz not null default now(),
+  trial_ends_at timestamptz not null,
+  reply_limit integer not null default 20,
+  replies_used integer not null default 0,
+  plan_status text not null default 'trial' check (plan_status in ('trial', 'active', 'expired')),
+  created_at timestamptz not null default now()
+);
+```
+
+After the trial or 20 replies are used, clients are prompted to upgrade to Pro or Agency.
+
 ## Stripe Checkout
 
 The Pro and Agency pricing buttons call `POST /api/checkout` and redirect to Stripe-hosted Checkout when Stripe is configured.

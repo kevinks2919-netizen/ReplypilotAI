@@ -1,6 +1,7 @@
 "use client";
 
 import { Copy, Files, Loader2, Send, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   generateMockResponse,
@@ -8,6 +9,7 @@ import {
   type SpendingPotential,
   type Tone
 } from "@/lib/mock-ai";
+import type { PublicTrialAccount } from "@/lib/trial-auth";
 
 const tones: Tone[] = ["friendly", "playful", "flirty", "professional", "funny"];
 
@@ -20,26 +22,37 @@ type GenerateRepliesApiResponse = {
   urgencyScore: number;
   spendingPotential: SpendingPotential;
   source?: "mock" | "openai";
+  account?: PublicTrialAccount;
+  error?: string;
 };
 
-export function DashboardGenerator() {
+export function DashboardGenerator({ account }: { account: PublicTrialAccount }) {
   const [message, setMessage] = useState(sampleMessage);
   const [tone, setTone] = useState<Tone>("friendly");
   const [result, setResult] = useState<GenerationResult>(() =>
     generateMockResponse(sampleMessage, "friendly")
   );
+  const [trialAccount, setTrialAccount] = useState(account);
+  const [limitError, setLimitError] = useState("");
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [copiedAll, setCopiedAll] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [usageCount, setUsageCount] = useState(0);
 
   const canGenerate = useMemo(() => message.trim().length > 0, [message]);
-  const usageLimit = 20;
+  const usageLimit = trialAccount.reply_limit;
+  const usageCount = trialAccount.replies_used;
+  const repliesRemaining = Math.max(0, usageLimit - usageCount);
+  const trialEndsAt = new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  }).format(new Date(trialAccount.trial_ends_at));
   const usagePercent = Math.min(100, (usageCount / usageLimit) * 100);
 
   async function handleGenerate() {
     if (!canGenerate) return;
     setIsGenerating(true);
+    setLimitError("");
 
     try {
       const response = await fetch("/api/generate-replies", {
@@ -56,6 +69,10 @@ export function DashboardGenerator() {
       const payload = (await response.json()) as GenerateRepliesApiResponse;
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 402) {
+          setLimitError(getApiErrorMessage(payload));
+          return;
+        }
         throw new Error(getApiErrorMessage(payload));
       }
 
@@ -71,9 +88,11 @@ export function DashboardGenerator() {
         },
         source: payload.source ?? "openai"
       });
+      if (payload.account) {
+        setTrialAccount(payload.account);
+      }
       setCopiedId(null);
       setCopiedAll(false);
-      setUsageCount((count) => Math.min(usageLimit, count + 1));
     } catch (error) {
       const fallback = generateMockResponse(message, tone);
       setResult({
@@ -83,7 +102,6 @@ export function DashboardGenerator() {
       });
       setCopiedId(null);
       setCopiedAll(false);
-      setUsageCount((count) => Math.min(usageLimit, count + 1));
     } finally {
       setIsGenerating(false);
     }
@@ -136,6 +154,21 @@ export function DashboardGenerator() {
           />
         </div>
 
+        <div className="mb-5 rounded-lg border border-ink/10 bg-mist/70 p-4 text-sm leading-6 text-ink/68">
+          Signed in as <span className="font-semibold text-ink">{trialAccount.email}</span>.
+          Trial ends on <span className="font-semibold text-ink">{trialEndsAt}</span>.
+          You have <span className="font-semibold text-ink">{repliesRemaining}</span> demo replies remaining.
+        </div>
+
+        {limitError ? (
+          <div className="mb-5 rounded-lg border border-coral/20 bg-coral/8 p-4 text-sm leading-6 text-coral">
+            {limitError}{" "}
+            <Link href="/#pricing" className="font-semibold underline">
+              View monthly plans.
+            </Link>
+          </div>
+        ) : null}
+
         <label className="text-sm font-medium text-ink" htmlFor="fan-message">
           Incoming fan message
         </label>
@@ -169,7 +202,7 @@ export function DashboardGenerator() {
           <button
             type="button"
             onClick={handleGenerate}
-            disabled={!canGenerate || isGenerating}
+            disabled={!canGenerate || isGenerating || repliesRemaining === 0}
             className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-plum disabled:cursor-not-allowed disabled:bg-ink/40 md:w-auto"
           >
             {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
@@ -276,7 +309,7 @@ export function DashboardGenerator() {
             Current plan
           </p>
           <p className="mt-2 text-lg font-semibold">Free</p>
-          <p className="mt-1 text-sm text-white/60">20 replies/day included</p>
+          <p className="mt-1 text-sm text-white/60">14-day demo with 20 total replies</p>
         </div>
       </aside>
     </div>

@@ -4,6 +4,7 @@ import {
   isTone,
   type SpendingPotential
 } from "@/lib/mock-ai";
+import { incrementReplyUsage, requireActiveTrialAccount } from "@/lib/trial-auth";
 
 type GenerateRepliesRequest = {
   message?: unknown;
@@ -36,6 +37,12 @@ const responseSchema = {
 };
 
 export async function POST(request: NextRequest) {
+  const trial = await requireActiveTrialAccount();
+
+  if (!trial.ok) {
+    return NextResponse.json({ error: trial.error }, { status: trial.status });
+  }
+
   let body: GenerateRepliesRequest;
 
   try {
@@ -56,7 +63,11 @@ export async function POST(request: NextRequest) {
   }
 
   if (!hasUsableOpenAiKey(process.env.OPENAI_API_KEY)) {
-    return NextResponse.json(toApiResponse(generateMockResponse(message, tone), "mock"));
+    const account = await incrementReplyUsage(trial.account);
+    return NextResponse.json({
+      ...toApiResponse(generateMockResponse(message, tone), "mock"),
+      account
+    });
   }
 
   try {
@@ -94,7 +105,8 @@ export async function POST(request: NextRequest) {
     const parsed = parseOpenAiJson(payload);
     const safeResponse = normalizeApiResponse(parsed);
 
-    return NextResponse.json({ ...safeResponse, source: "openai" });
+    const account = await incrementReplyUsage(trial.account);
+    return NextResponse.json({ ...safeResponse, source: "openai", account });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown OpenAI error.";
     return NextResponse.json({ error: message }, { status: 502 });
