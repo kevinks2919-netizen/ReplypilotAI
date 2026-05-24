@@ -39,7 +39,7 @@ const pricingPlans = [
 ];
 
 const faqs = [
-  ["Does ReplyPilot AI connect to fan platforms?", "Not yet. This MVP keeps generation separate from platform integrations so agencies can validate the workflow before connecting inbox sources."],
+  ["Does ReplyPilot AI connect to fan platforms?", "Not yet. This MVP keeps generation separate from platform integrations so agencies can validate the workflow before connecting inbox sources through approved APIs."],
   ["What happens without an OpenAI key?", "The app falls back to mock replies so your workflow still works during testing, demos, and development."],
   ["Are replies explicit?", "No. The assistant is prompted to keep replies non-explicit, friendly, and suitable for mainstream platform policies."],
   ["How does safety and platform compliance work?", "ReplyPilot AI uses conservative instructions, avoids adult or manipulative language, and keeps humans in the loop before any reply is sent."],
@@ -58,6 +58,7 @@ export default function Home() {
           <a href="#solution" className="transition hover:text-coral">Solution</a>
           <a href="#pricing" className="transition hover:text-coral">Pricing</a>
           <a href="#faq" className="transition hover:text-coral">FAQ</a>
+          <Link href="/connected-accounts" className="transition hover:text-coral">Integrations</Link>
           <Link href="/outreach-kit" className="transition hover:text-coral">Outreach Kit</Link>
           <Link href="/admin" className="transition hover:text-coral">Admin</Link>
         </div>
@@ -106,6 +107,12 @@ export default function Home() {
               className="inline-flex min-h-12 items-center justify-center rounded-lg border border-ink/10 bg-white/80 px-5 py-3 text-sm font-semibold text-ink transition hover:border-coral hover:text-coral"
             >
               Try Dashboard
+            </Link>
+            <Link
+              href="/connected-accounts"
+              className="inline-flex min-h-12 items-center justify-center rounded-lg border border-ink/10 bg-white/80 px-5 py-3 text-sm font-semibold text-ink transition hover:border-coral hover:text-coral"
+            >
+              Integrations
             </Link>
             <a
               href="mailto:sales@replypilot.ai?subject=ReplyPilot%20AI%20Demo"

@@ -35,6 +35,16 @@ The dashboard uses `src/lib/mock-ai.ts` as a local fallback to generate three re
 
 This app does not connect to real fan platforms yet.
 
+## Connected Accounts Roadmap
+
+The `/connected-accounts` page explains the planned integration approach for clients.
+ReplyPilot AI should only read or send fan messages through official platform APIs,
+approved OAuth permissions, and human-reviewed workflows. Today, the production-safe
+MVP uses the manual dashboard: paste a message, generate reply drafts, review, and copy.
+
+Planned connectors include Instagram DMs, TikTok, X/Twitter, and Email/Gmail. Email/Gmail
+is the safest first connector candidate for agencies that route fan requests by email.
+
 ## MVP Pricing Tiers
 
 - Free: 20 replies/day
@@ -227,6 +237,7 @@ OPENAI_MODEL=gpt-5.2
 ```bash
 /
 /dashboard
+/connected-accounts
 /outreach-kit
 /admin
 /thank-you
