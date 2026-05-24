@@ -168,6 +168,12 @@ create table waitlist_submissions (
 );
 ```
 
+You can also run the complete schema from:
+
+```bash
+supabase/schema.sql
+```
+
 Keep `SUPABASE_SERVICE_ROLE_KEY` server-side only. Do not expose it with a `NEXT_PUBLIC_` prefix.
 
 ## Admin Password
