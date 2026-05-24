@@ -45,6 +45,49 @@ MVP uses the manual dashboard: paste a message, generate reply drafts, review, a
 Planned connectors include Instagram DMs, TikTok, X/Twitter, and Email/Gmail. Email/Gmail
 is the safest first connector candidate for agencies that route fan requests by email.
 
+### Gmail Connector
+
+The first connector foundation supports Google OAuth and a Gmail inbox preview. Add these
+environment variables:
+
+```bash
+GOOGLE_CLIENT_ID=your_google_oauth_client_id
+GOOGLE_CLIENT_SECRET=your_google_oauth_client_secret
+GOOGLE_REDIRECT_URI=https://your-domain.com/api/connect/gmail/callback
+```
+
+In Google Cloud Console, enable the Gmail API and add this authorized redirect URI:
+
+```bash
+https://your-domain.com/api/connect/gmail/callback
+```
+
+The app requests Gmail read/send scopes so it can preview inbox messages and later create
+human-reviewed replies. Public production use of Gmail restricted scopes may require Google
+app verification.
+
+For production persistence, create the connected accounts table:
+
+```sql
+create table if not exists public.connected_accounts (
+  id uuid primary key default gen_random_uuid(),
+  owner_account_id uuid not null references public.trial_accounts(id) on delete cascade,
+  provider text not null check (provider in ('gmail')),
+  provider_email text not null,
+  access_token text not null,
+  refresh_token text not null,
+  expires_at timestamptz not null,
+  scopes text not null,
+  status text not null default 'connected' check (status in ('connected', 'needs_reauth')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(owner_account_id, provider)
+);
+```
+
+TikTok direct message automation is not enabled in this MVP. Add it only through official
+TikTok-approved messaging access or an approved partner integration.
+
 ## MVP Pricing Tiers
 
 - Free: 20 replies/day

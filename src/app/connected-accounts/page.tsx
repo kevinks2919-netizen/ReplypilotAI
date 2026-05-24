@@ -10,6 +10,8 @@ import {
   ShieldCheck
 } from "lucide-react";
 import { Footer } from "@/components/Footer";
+import { ConnectedAccountsPanel } from "@/components/ConnectedAccountsPanel";
+import { getCurrentTrialAccount } from "@/lib/trial-auth";
 
 const integrations = [
   {
@@ -45,7 +47,9 @@ const workflow = [
   "A human reviews and sends from the approved workflow."
 ];
 
-export default function ConnectedAccountsPage() {
+export default async function ConnectedAccountsPage() {
+  const account = await getCurrentTrialAccount();
+
   return (
     <main className="min-h-screen px-4 py-5 sm:px-8">
       <div className="mx-auto max-w-7xl">
@@ -122,6 +126,10 @@ export default function ConnectedAccountsPage() {
               ))}
             </div>
           </div>
+        </section>
+
+        <section className="mt-10">
+          <ConnectedAccountsPanel account={account} />
         </section>
 
         <section className="mt-10 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
