@@ -106,7 +106,7 @@ const gmailScopes = [
   "https://www.googleapis.com/auth/gmail.send"
 ];
 
-const xScopes = ["users.read", "dm.read", "dm.write", "offline.access"];
+const xScopes = ["tweet.read", "users.read", "dm.read", "dm.write", "offline.access"];
 
 export function createXAuthorizationRequest(ownerAccountId: string) {
   const clientId = process.env.X_CLIENT_ID;
