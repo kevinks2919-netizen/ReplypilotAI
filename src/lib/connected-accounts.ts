@@ -128,13 +128,13 @@ export async function listGmailMessages(ownerAccountId: string) {
   const freshAccount = await refreshGmailAccountIfNeeded(account);
   const listResponse = await gmailFetch<{ messages?: { id: string; threadId: string }[] }>(
     freshAccount,
-    "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&q=in:inbox newer_than:30d"
+    "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=25&q=newer_than:30d"
   );
 
   const messages = listResponse.messages ?? [];
   const previews: GmailMessagePreview[] = [];
 
-  for (const message of messages.slice(0, 5)) {
+  for (const message of messages.slice(0, 10)) {
     const detail = await gmailFetch<GmailMessageDetail>(
       freshAccount,
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`
