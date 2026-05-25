@@ -105,13 +105,13 @@ Auto-reply must stay disabled by default. A sender must be explicitly approved b
 the client before automated replies can be considered for that sender.
 
 Create this table to hide reviewed messages inside ReplyPilot AI without deleting
-the original message from Gmail, X, TikTok, or any connected platform:
+the original message from Gmail, X, TikTok, OnlyFans, or any connected platform:
 
 ```sql
 create table if not exists public.message_dismissals (
   id uuid primary key default gen_random_uuid(),
   owner_account_id uuid not null references public.trial_accounts(id) on delete cascade,
-  provider text not null check (provider in ('gmail', 'x', 'tiktok')),
+  provider text not null check (provider in ('gmail', 'x', 'tiktok', 'onlyfans')),
   message_identifier text not null,
   sender_identifier text not null,
   sender_label text not null,
@@ -141,6 +141,28 @@ create table if not exists public.tiktok_connection_requests (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(owner_account_id, tiktok_handle)
+);
+```
+
+OnlyFans direct message automation is not enabled in this MVP. Track requested
+OnlyFans accounts only for future approved connector work. Do not use password
+sharing, scraping, browser automation, or unofficial session capture for client
+accounts.
+
+Create this table to track OnlyFans connector requests:
+
+```sql
+create table if not exists public.onlyfans_connection_requests (
+  id uuid primary key default gen_random_uuid(),
+  owner_account_id uuid not null references public.trial_accounts(id) on delete cascade,
+  onlyfans_handle text not null,
+  account_type text not null check (account_type in ('creator', 'agency', 'brand')),
+  requested_capability text not null default 'dm_review' check (requested_capability in ('dm_review')),
+  status text not null default 'requested' check (status in ('requested', 'approved', 'blocked')),
+  notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(owner_account_id, onlyfans_handle)
 );
 ```
 

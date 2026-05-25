@@ -36,7 +36,7 @@ export type GmailMessagePreview = {
 export type AutoReplyApproval = {
   id: string;
   owner_account_id: string;
-  provider: "gmail" | "tiktok";
+  provider: "gmail" | "tiktok" | "onlyfans";
   sender_identifier: string;
   sender_label: string;
   status: "approved" | "paused";
@@ -47,7 +47,7 @@ export type AutoReplyApproval = {
 export type MessageDismissal = {
   id: string;
   owner_account_id: string;
-  provider: "gmail" | "x" | "tiktok";
+  provider: "gmail" | "x" | "tiktok" | "onlyfans";
   message_identifier: string;
   sender_identifier: string;
   sender_label: string;
@@ -59,6 +59,18 @@ export type TikTokConnectionRequest = {
   id: string;
   owner_account_id: string;
   tiktok_handle: string;
+  account_type: "creator" | "agency" | "brand";
+  requested_capability: "dm_review";
+  status: "requested" | "approved" | "blocked";
+  notes: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OnlyFansConnectionRequest = {
+  id: string;
+  owner_account_id: string;
+  onlyfans_handle: string;
   account_type: "creator" | "agency" | "brand";
   requested_capability: "dm_review";
   status: "requested" | "approved" | "blocked";
@@ -108,6 +120,12 @@ const tiktokRequestsDataFile = path.join(
   process.env.VERCEL ? "/tmp" : process.cwd(),
   "data",
   "tiktok-connection-requests.json"
+);
+
+const onlyFansRequestsDataFile = path.join(
+  process.env.VERCEL ? "/tmp" : process.cwd(),
+  "data",
+  "onlyfans-connection-requests.json"
 );
 
 const xConnectedAccountsDataFile = path.join(
@@ -398,6 +416,11 @@ export async function getTikTokConnectionRequests(ownerAccountId: string) {
   return requests.filter((request) => request.owner_account_id === ownerAccountId);
 }
 
+export async function getOnlyFansConnectionRequests(ownerAccountId: string) {
+  const requests = await readOnlyFansConnectionRequests();
+  return requests.filter((request) => request.owner_account_id === ownerAccountId);
+}
+
 export async function requestTikTokConnection(input: {
   ownerAccountId: string;
   tiktokHandle: string;
@@ -431,6 +454,42 @@ export async function requestTikTokConnection(input: {
   };
 
   await upsertTikTokConnectionRequest(request);
+  return request;
+}
+
+export async function requestOnlyFansConnection(input: {
+  ownerAccountId: string;
+  onlyFansHandle: string;
+  accountType: "creator" | "agency" | "brand";
+  notes: string;
+}) {
+  const now = new Date().toISOString();
+  const normalizedHandle = normalizeSocialHandle(input.onlyFansHandle);
+
+  if (!normalizedHandle) {
+    throw new Error("OnlyFans handle is required.");
+  }
+
+  const existingRequests = await readOnlyFansConnectionRequests();
+  const existing = existingRequests.find(
+    (request) =>
+      request.owner_account_id === input.ownerAccountId &&
+      request.onlyfans_handle.toLowerCase() === normalizedHandle.toLowerCase()
+  );
+
+  const request: OnlyFansConnectionRequest = {
+    id: existing?.id ?? randomUUID(),
+    owner_account_id: input.ownerAccountId,
+    onlyfans_handle: normalizedHandle,
+    account_type: input.accountType,
+    requested_capability: "dm_review",
+    status: existing?.status ?? "requested",
+    notes: input.notes.trim(),
+    created_at: existing?.created_at ?? now,
+    updated_at: now
+  };
+
+  await upsertOnlyFansConnectionRequest(request);
   return request;
 }
 
@@ -893,6 +952,44 @@ async function readTikTokConnectionRequests() {
   return readLocalTikTokConnectionRequests();
 }
 
+async function upsertOnlyFansConnectionRequest(request: OnlyFansConnectionRequest) {
+  const supabase = getSupabaseAdminClient();
+
+  if (supabase) {
+    const { error } = await supabase
+      .from("onlyfans_connection_requests")
+      .upsert(request, { onConflict: "owner_account_id,onlyfans_handle" });
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  const requests = await readLocalOnlyFansConnectionRequests();
+  const nextRequests = requests.filter(
+    (item) =>
+      !(
+        item.owner_account_id === request.owner_account_id &&
+        item.onlyfans_handle.toLowerCase() === request.onlyfans_handle.toLowerCase()
+      )
+  );
+  nextRequests.push(request);
+  await writeLocalOnlyFansConnectionRequests(nextRequests);
+}
+
+async function readOnlyFansConnectionRequests() {
+  const supabase = getSupabaseAdminClient();
+
+  if (supabase) {
+    const { data, error } = await supabase.from("onlyfans_connection_requests").select("*");
+    if (error) {
+      if (error.message.includes("onlyfans_connection_requests")) return [];
+      throw new Error(error.message);
+    }
+    return Array.isArray(data) ? data.filter(isOnlyFansConnectionRequest) : [];
+  }
+
+  return readLocalOnlyFansConnectionRequests();
+}
+
 async function readLocalTikTokConnectionRequests() {
   try {
     const file = await readFile(tiktokRequestsDataFile, "utf-8");
@@ -905,9 +1002,26 @@ async function readLocalTikTokConnectionRequests() {
   }
 }
 
+async function readLocalOnlyFansConnectionRequests() {
+  try {
+    const file = await readFile(onlyFansRequestsDataFile, "utf-8");
+    const parsed = JSON.parse(file);
+    return Array.isArray(parsed)
+      ? (parsed.filter(isOnlyFansConnectionRequest) as OnlyFansConnectionRequest[])
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 async function writeLocalTikTokConnectionRequests(requests: TikTokConnectionRequest[]) {
   await mkdir(path.dirname(tiktokRequestsDataFile), { recursive: true });
   await writeFile(tiktokRequestsDataFile, `${JSON.stringify(requests, null, 2)}\n`, "utf-8");
+}
+
+async function writeLocalOnlyFansConnectionRequests(requests: OnlyFansConnectionRequest[]) {
+  await mkdir(path.dirname(onlyFansRequestsDataFile), { recursive: true });
+  await writeFile(onlyFansRequestsDataFile, `${JSON.stringify(requests, null, 2)}\n`, "utf-8");
 }
 
 async function readLocalAutoReplyApprovals() {
@@ -1055,6 +1169,10 @@ function extractEmailAddress(value: string) {
 }
 
 function normalizeTikTokHandle(value: string) {
+  return normalizeSocialHandle(value);
+}
+
+function normalizeSocialHandle(value: string) {
   return value.trim().replace(/^@+/, "");
 }
 
@@ -1092,7 +1210,7 @@ function isAutoReplyApproval(value: unknown): value is AutoReplyApproval {
   return (
     typeof approval.id === "string" &&
     typeof approval.owner_account_id === "string" &&
-    (approval.provider === "gmail" || approval.provider === "tiktok") &&
+    (approval.provider === "gmail" || approval.provider === "tiktok" || approval.provider === "onlyfans") &&
     typeof approval.sender_identifier === "string" &&
     typeof approval.sender_label === "string" &&
     (approval.status === "approved" || approval.status === "paused") &&
@@ -1108,7 +1226,10 @@ function isMessageDismissal(value: unknown): value is MessageDismissal {
   return (
     typeof dismissal.id === "string" &&
     typeof dismissal.owner_account_id === "string" &&
-    (dismissal.provider === "gmail" || dismissal.provider === "x" || dismissal.provider === "tiktok") &&
+    (dismissal.provider === "gmail" ||
+      dismissal.provider === "x" ||
+      dismissal.provider === "tiktok" ||
+      dismissal.provider === "onlyfans") &&
     typeof dismissal.message_identifier === "string" &&
     typeof dismissal.sender_identifier === "string" &&
     typeof dismissal.sender_label === "string" &&
@@ -1125,6 +1246,27 @@ function isTikTokConnectionRequest(value: unknown): value is TikTokConnectionReq
     typeof request.id === "string" &&
     typeof request.owner_account_id === "string" &&
     typeof request.tiktok_handle === "string" &&
+    (request.account_type === "creator" ||
+      request.account_type === "agency" ||
+      request.account_type === "brand") &&
+    request.requested_capability === "dm_review" &&
+    (request.status === "requested" ||
+      request.status === "approved" ||
+      request.status === "blocked") &&
+    typeof request.notes === "string" &&
+    typeof request.created_at === "string" &&
+    typeof request.updated_at === "string"
+  );
+}
+
+function isOnlyFansConnectionRequest(value: unknown): value is OnlyFansConnectionRequest {
+  if (!value || typeof value !== "object") return false;
+  const request = value as Record<string, unknown>;
+
+  return (
+    typeof request.id === "string" &&
+    typeof request.owner_account_id === "string" &&
+    typeof request.onlyfans_handle === "string" &&
     (request.account_type === "creator" ||
       request.account_type === "agency" ||
       request.account_type === "brand") &&

@@ -24,9 +24,23 @@ type TikTokConnectionRequest = {
   notes: string;
 };
 
+type OnlyFansConnectionRequest = {
+  id: string;
+  onlyfans_handle: string;
+  account_type: "creator" | "agency" | "brand";
+  status: "requested" | "approved" | "blocked";
+  notes: string;
+};
+
 type TikTokRequestsResponse = {
   requests: TikTokConnectionRequest[];
   request?: TikTokConnectionRequest;
+  error?: string;
+};
+
+type OnlyFansRequestsResponse = {
+  requests: OnlyFansConnectionRequest[];
+  request?: OnlyFansConnectionRequest;
   error?: string;
 };
 
@@ -51,14 +65,20 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
   const [xAccount, setXAccount] = useState<PublicXConnectedAccount | null>(null);
   const [messages, setMessages] = useState<GmailMessagePreview[]>([]);
   const [tiktokRequests, setTikTokRequests] = useState<TikTokConnectionRequest[]>([]);
+  const [onlyFansRequests, setOnlyFansRequests] = useState<OnlyFansConnectionRequest[]>([]);
   const [tiktokHandle, setTikTokHandle] = useState("");
+  const [onlyFansHandle, setOnlyFansHandle] = useState("");
   const [tiktokAccountType, setTikTokAccountType] = useState<"creator" | "agency" | "brand">("creator");
+  const [onlyFansAccountType, setOnlyFansAccountType] = useState<"creator" | "agency" | "brand">("creator");
   const [tiktokNotes, setTikTokNotes] = useState("");
+  const [onlyFansNotes, setOnlyFansNotes] = useState("");
   const [replyDrafts, setReplyDrafts] = useState<Record<string, GeneratedReplySet>>({});
   const [error, setError] = useState("");
   const [tiktokSuccess, setTikTokSuccess] = useState("");
+  const [onlyFansSuccess, setOnlyFansSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmittingTikTok, setIsSubmittingTikTok] = useState(false);
+  const [isSubmittingOnlyFans, setIsSubmittingOnlyFans] = useState(false);
   const [pendingSender, setPendingSender] = useState("");
   const [generatingMessageId, setGeneratingMessageId] = useState("");
   const [messageTones, setMessageTones] = useState<Record<string, Tone>>({});
@@ -73,6 +93,7 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
     if (account) {
       loadMessages();
       loadTikTokRequests();
+      loadOnlyFansRequests();
       loadXAccount();
     }
   }, [account]);
@@ -108,6 +129,19 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
       setTikTokRequests(payload.requests);
     } catch {
       setTikTokRequests([]);
+    }
+  }
+
+  async function loadOnlyFansRequests() {
+    try {
+      const response = await fetch("/api/connect/onlyfans/request");
+      const payload = (await response.json()) as OnlyFansRequestsResponse;
+
+      if (!response.ok) return;
+
+      setOnlyFansRequests(payload.requests);
+    } catch {
+      setOnlyFansRequests([]);
     }
   }
 
@@ -158,6 +192,43 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
       setError(submitError instanceof Error ? submitError.message : "Could not request TikTok access.");
     } finally {
       setIsSubmittingTikTok(false);
+    }
+  }
+
+  async function submitOnlyFansRequest() {
+    setIsSubmittingOnlyFans(true);
+    setError("");
+    setOnlyFansSuccess("");
+
+    try {
+      const response = await fetch("/api/connect/onlyfans/request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          onlyFansHandle,
+          accountType: onlyFansAccountType,
+          notes: onlyFansNotes
+        })
+      });
+      const payload = (await response.json()) as OnlyFansRequestsResponse;
+
+      if (!response.ok || !payload.request) {
+        throw new Error(payload.error ?? "Could not request OnlyFans access.");
+      }
+
+      setOnlyFansRequests((currentRequests) => [
+        payload.request as OnlyFansConnectionRequest,
+        ...currentRequests.filter((request) => request.id !== payload.request?.id)
+      ]);
+      setOnlyFansHandle("");
+      setOnlyFansNotes("");
+      setOnlyFansSuccess("OnlyFans connector request saved.");
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Could not request OnlyFans access.");
+    } finally {
+      setIsSubmittingOnlyFans(false);
     }
   }
 
@@ -652,6 +723,89 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
       <div className="mt-4 rounded-lg border border-plum/15 bg-plum/8 p-4 text-sm leading-6 text-plum">
         Keep auto-reply permission sender-specific. ReplyPilot AI should not send DMs to
         every X conversation by default.
+      </div>
+    </div>
+    <div className="rounded-lg border border-ink/10 bg-white/88 p-5 shadow-soft">
+      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-lg bg-ink/8 px-3 py-2 text-sm font-semibold text-ink">
+            <ShieldCheck size={16} />
+            OnlyFans access request
+          </div>
+          <h2 className="mt-4 text-2xl font-semibold text-ink">OnlyFans DM connector</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/64">
+            Save OnlyFans accounts for a future approved connector workflow. ReplyPilot AI
+            should only hide reviewed messages inside this app, never delete real OnlyFans
+            DMs or use unofficial scraping/password-sharing methods.
+          </p>
+        </div>
+        <div className="rounded-lg border border-coral/20 bg-coral/8 p-4 text-sm leading-6 text-coral lg:max-w-sm">
+          Only connect through approved platform access or a vetted compliance-safe provider.
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 lg:grid-cols-[0.7fr_0.4fr]">
+        <input
+          value={onlyFansHandle}
+          onChange={(event) => setOnlyFansHandle(event.target.value)}
+          className="min-h-11 rounded-lg border border-ink/15 bg-mist/60 px-4 py-3 text-sm outline-none transition focus:border-coral focus:ring-4 focus:ring-coral/15"
+          placeholder="@creatorhandle"
+        />
+        <select
+          value={onlyFansAccountType}
+          onChange={(event) =>
+            setOnlyFansAccountType(event.target.value as "creator" | "agency" | "brand")
+          }
+          className="min-h-11 rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm capitalize outline-none transition focus:border-coral focus:ring-4 focus:ring-coral/15"
+        >
+          <option value="creator">Creator</option>
+          <option value="agency">Agency</option>
+          <option value="brand">Brand</option>
+        </select>
+      </div>
+      <textarea
+        value={onlyFansNotes}
+        onChange={(event) => setOnlyFansNotes(event.target.value)}
+        className="mt-3 min-h-24 w-full resize-y rounded-lg border border-ink/15 bg-mist/60 px-4 py-3 text-sm leading-6 outline-none transition focus:border-coral focus:ring-4 focus:ring-coral/15"
+        placeholder="Notes: client use case, expected DM volume, app-only dismissal requirements..."
+      />
+      <button
+        type="button"
+        onClick={submitOnlyFansRequest}
+        disabled={isSubmittingOnlyFans}
+        className="mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white transition hover:bg-plum disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {isSubmittingOnlyFans ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
+        {isSubmittingOnlyFans ? "Saving..." : "Request OnlyFans connector"}
+      </button>
+
+      {onlyFansSuccess ? (
+        <p className="mt-4 rounded-lg border border-mint/20 bg-mint/10 p-4 text-sm text-mint">
+          {onlyFansSuccess}
+        </p>
+      ) : null}
+
+      <div className="mt-5 grid gap-3">
+        {onlyFansRequests.length > 0 ? (
+          onlyFansRequests.map((request) => (
+            <div key={request.id} className="rounded-lg border border-ink/10 bg-mist p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="font-semibold text-ink">@{request.onlyfans_handle}</p>
+                <span className="rounded-lg bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink/55">
+                  {request.status}
+                </span>
+              </div>
+              <p className="mt-2 text-sm capitalize text-ink/60">{request.account_type}</p>
+              {request.notes ? (
+                <p className="mt-2 text-sm leading-6 text-ink/64">{request.notes}</p>
+              ) : null}
+            </div>
+          ))
+        ) : (
+          <p className="rounded-lg bg-mist p-4 text-sm text-ink/60">
+            No OnlyFans connector requests yet.
+          </p>
+        )}
       </div>
     </div>
     <div className="rounded-lg border border-ink/10 bg-white/88 p-5 shadow-soft">
