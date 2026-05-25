@@ -44,6 +44,17 @@ export type AutoReplyApproval = {
   updated_at: string;
 };
 
+export type MessageDismissal = {
+  id: string;
+  owner_account_id: string;
+  provider: "gmail" | "x" | "tiktok";
+  message_identifier: string;
+  sender_identifier: string;
+  sender_label: string;
+  reason: "manual_dismissal";
+  created_at: string;
+};
+
 export type TikTokConnectionRequest = {
   id: string;
   owner_account_id: string;
@@ -85,6 +96,12 @@ const autoReplyApprovalsDataFile = path.join(
   process.env.VERCEL ? "/tmp" : process.cwd(),
   "data",
   "auto-reply-approvals.json"
+);
+
+const messageDismissalsDataFile = path.join(
+  process.env.VERCEL ? "/tmp" : process.cwd(),
+  "data",
+  "message-dismissals.json"
 );
 
 const tiktokRequestsDataFile = path.join(
@@ -190,10 +207,16 @@ export async function listGmailMessages(ownerAccountId: string) {
   const account = await getGmailAccount(ownerAccountId);
   if (!account) return [];
   const approvals = await getAutoReplyApprovals(ownerAccountId);
+  const dismissals = await getMessageDismissals(ownerAccountId);
   const approvedSenders = new Set(
     approvals
       .filter((approval) => approval.provider === "gmail" && approval.status === "approved")
       .map((approval) => approval.sender_identifier.toLowerCase())
+  );
+  const dismissedMessageIds = new Set(
+    dismissals
+      .filter((dismissal) => dismissal.provider === "gmail")
+      .map((dismissal) => dismissal.message_identifier)
   );
 
   const freshAccount = await refreshGmailAccountIfNeeded(account);
@@ -206,6 +229,8 @@ export async function listGmailMessages(ownerAccountId: string) {
   const previews: GmailMessagePreview[] = [];
 
   for (const message of messages.slice(0, 10)) {
+    if (dismissedMessageIds.has(message.id)) continue;
+
     const detail = await gmailFetch<GmailMessageDetail>(
       freshAccount,
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${message.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`
@@ -214,6 +239,34 @@ export async function listGmailMessages(ownerAccountId: string) {
   }
 
   return previews;
+}
+
+export async function dismissConnectedMessage(input: {
+  ownerAccountId: string;
+  provider: "gmail" | "x" | "tiktok";
+  messageIdentifier: string;
+  senderIdentifier: string;
+  senderLabel: string;
+}) {
+  const messageIdentifier = input.messageIdentifier.trim();
+
+  if (!messageIdentifier) {
+    throw new Error("Message id is required.");
+  }
+
+  const dismissal: MessageDismissal = {
+    id: randomUUID(),
+    owner_account_id: input.ownerAccountId,
+    provider: input.provider,
+    message_identifier: messageIdentifier,
+    sender_identifier: input.senderIdentifier.trim().toLowerCase(),
+    sender_label: input.senderLabel.trim(),
+    reason: "manual_dismissal",
+    created_at: new Date().toISOString()
+  };
+
+  await upsertMessageDismissal(dismissal);
+  return dismissal;
 }
 
 export async function sendGmailReply(input: {
@@ -276,6 +329,11 @@ export async function sendGmailReply(input: {
 export async function getAutoReplyApprovals(ownerAccountId: string) {
   const approvals = await readAutoReplyApprovals();
   return approvals.filter((approval) => approval.owner_account_id === ownerAccountId);
+}
+
+export async function getMessageDismissals(ownerAccountId: string) {
+  const dismissals = await readMessageDismissals();
+  return dismissals.filter((dismissal) => dismissal.owner_account_id === ownerAccountId);
 }
 
 export async function approveAutoReplySender(input: {
@@ -758,6 +816,45 @@ async function readAutoReplyApprovals() {
   return readLocalAutoReplyApprovals();
 }
 
+async function upsertMessageDismissal(dismissal: MessageDismissal) {
+  const supabase = getSupabaseAdminClient();
+
+  if (supabase) {
+    const { error } = await supabase
+      .from("message_dismissals")
+      .upsert(dismissal, { onConflict: "owner_account_id,provider,message_identifier" });
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  const dismissals = await readLocalMessageDismissals();
+  const nextDismissals = dismissals.filter(
+    (item) =>
+      !(
+        item.owner_account_id === dismissal.owner_account_id &&
+        item.provider === dismissal.provider &&
+        item.message_identifier === dismissal.message_identifier
+      )
+  );
+  nextDismissals.push(dismissal);
+  await writeLocalMessageDismissals(nextDismissals);
+}
+
+async function readMessageDismissals() {
+  const supabase = getSupabaseAdminClient();
+
+  if (supabase) {
+    const { data, error } = await supabase.from("message_dismissals").select("*");
+    if (error) {
+      if (error.message.includes("message_dismissals")) return [];
+      throw new Error(error.message);
+    }
+    return Array.isArray(data) ? data.filter(isMessageDismissal) : [];
+  }
+
+  return readLocalMessageDismissals();
+}
+
 async function upsertTikTokConnectionRequest(request: TikTokConnectionRequest) {
   const supabase = getSupabaseAdminClient();
 
@@ -826,6 +923,21 @@ async function readLocalAutoReplyApprovals() {
 async function writeLocalAutoReplyApprovals(approvals: AutoReplyApproval[]) {
   await mkdir(path.dirname(autoReplyApprovalsDataFile), { recursive: true });
   await writeFile(autoReplyApprovalsDataFile, `${JSON.stringify(approvals, null, 2)}\n`, "utf-8");
+}
+
+async function readLocalMessageDismissals() {
+  try {
+    const file = await readFile(messageDismissalsDataFile, "utf-8");
+    const parsed = JSON.parse(file);
+    return Array.isArray(parsed) ? (parsed.filter(isMessageDismissal) as MessageDismissal[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeLocalMessageDismissals(dismissals: MessageDismissal[]) {
+  await mkdir(path.dirname(messageDismissalsDataFile), { recursive: true });
+  await writeFile(messageDismissalsDataFile, `${JSON.stringify(dismissals, null, 2)}\n`, "utf-8");
 }
 
 async function readLocalConnectedAccounts() {
@@ -986,6 +1098,22 @@ function isAutoReplyApproval(value: unknown): value is AutoReplyApproval {
     (approval.status === "approved" || approval.status === "paused") &&
     typeof approval.created_at === "string" &&
     typeof approval.updated_at === "string"
+  );
+}
+
+function isMessageDismissal(value: unknown): value is MessageDismissal {
+  if (!value || typeof value !== "object") return false;
+  const dismissal = value as Record<string, unknown>;
+
+  return (
+    typeof dismissal.id === "string" &&
+    typeof dismissal.owner_account_id === "string" &&
+    (dismissal.provider === "gmail" || dismissal.provider === "x" || dismissal.provider === "tiktok") &&
+    typeof dismissal.message_identifier === "string" &&
+    typeof dismissal.sender_identifier === "string" &&
+    typeof dismissal.sender_label === "string" &&
+    dismissal.reason === "manual_dismissal" &&
+    typeof dismissal.created_at === "string"
   );
 }
 

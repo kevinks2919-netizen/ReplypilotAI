@@ -49,6 +49,18 @@ create table if not exists public.auto_reply_approvals (
   unique(owner_account_id, provider, sender_identifier)
 );
 
+create table if not exists public.message_dismissals (
+  id uuid primary key default gen_random_uuid(),
+  owner_account_id uuid not null references public.trial_accounts(id) on delete cascade,
+  provider text not null check (provider in ('gmail', 'x', 'tiktok')),
+  message_identifier text not null,
+  sender_identifier text not null,
+  sender_label text not null,
+  reason text not null default 'manual_dismissal' check (reason in ('manual_dismissal')),
+  created_at timestamptz not null default now(),
+  unique(owner_account_id, provider, message_identifier)
+);
+
 create table if not exists public.tiktok_connection_requests (
   id uuid primary key default gen_random_uuid(),
   owner_account_id uuid not null references public.trial_accounts(id) on delete cascade,

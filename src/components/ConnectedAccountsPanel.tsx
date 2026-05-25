@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Loader2, Mail, MessageCircle, RefreshCw, Send, ShieldCheck } from "lucide-react";
+import { Copy, Loader2, Mail, MessageCircle, RefreshCw, Send, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
   GmailMessagePreview,
@@ -65,6 +65,7 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
   const [copiedReplyId, setCopiedReplyId] = useState("");
   const [sendingReplyId, setSendingReplyId] = useState("");
   const [sentReplyId, setSentReplyId] = useState("");
+  const [dismissingMessageId, setDismissingMessageId] = useState("");
 
   const gmailAccount = connectedAccounts.find((item) => item.provider === "gmail");
 
@@ -294,6 +295,48 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
     }
   }
 
+  async function dismissMessage(message: GmailMessagePreview) {
+    const confirmed = window.confirm(
+      "Hide this message from ReplyPilot AI? This will not delete anything from Gmail."
+    );
+
+    if (!confirmed) return;
+
+    setDismissingMessageId(message.id);
+    setError("");
+
+    try {
+      const response = await fetch("/api/connect/message-dismissals", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          provider: "gmail",
+          messageIdentifier: message.id,
+          senderIdentifier: message.fromEmail,
+          senderLabel: message.from
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(typeof payload.error === "string" ? payload.error : "Could not dismiss message.");
+      }
+
+      setMessages((currentMessages) => currentMessages.filter((item) => item.id !== message.id));
+      setReplyDrafts((currentDrafts) => {
+        const nextDrafts = { ...currentDrafts };
+        delete nextDrafts[message.id];
+        return nextDrafts;
+      });
+    } catch (dismissError) {
+      setError(dismissError instanceof Error ? dismissError.message : "Could not dismiss message.");
+    } finally {
+      setDismissingMessageId("");
+    }
+  }
+
   if (!account) {
     return (
       <div className="rounded-lg border border-ink/10 bg-white/88 p-5 shadow-soft">
@@ -378,12 +421,28 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
         ) : messages.length > 0 ? (
           messages.map((message) => (
             <article key={message.id} className="rounded-lg border border-ink/10 bg-white p-4">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-ink">{message.subject}</p>
                   <p className="mt-1 text-xs text-ink/52">{message.from}</p>
                 </div>
-                <p className="text-xs text-ink/45">{message.date}</p>
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  <p className="text-xs text-ink/45">{message.date}</p>
+                  <button
+                    type="button"
+                    onClick={() => dismissMessage(message)}
+                    disabled={dismissingMessageId === message.id}
+                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:border-coral hover:text-coral disabled:cursor-not-allowed disabled:opacity-60"
+                    title="Hide from ReplyPilot only"
+                  >
+                    {dismissingMessageId === message.id ? (
+                      <Loader2 className="animate-spin" size={14} />
+                    ) : (
+                      <Trash2 size={14} />
+                    )}
+                    {dismissingMessageId === message.id ? "Dismissing..." : "Dismiss"}
+                  </button>
+                </div>
               </div>
               <p className="mt-3 text-sm leading-6 text-ink/64">{message.snippet}</p>
               <div className="mt-4 flex flex-col justify-between gap-3 rounded-lg bg-mist p-3 sm:flex-row sm:items-center">

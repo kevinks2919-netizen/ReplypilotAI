@@ -104,6 +104,26 @@ create table if not exists public.auto_reply_approvals (
 Auto-reply must stay disabled by default. A sender must be explicitly approved by
 the client before automated replies can be considered for that sender.
 
+Create this table to hide reviewed messages inside ReplyPilot AI without deleting
+the original message from Gmail, X, TikTok, or any connected platform:
+
+```sql
+create table if not exists public.message_dismissals (
+  id uuid primary key default gen_random_uuid(),
+  owner_account_id uuid not null references public.trial_accounts(id) on delete cascade,
+  provider text not null check (provider in ('gmail', 'x', 'tiktok')),
+  message_identifier text not null,
+  sender_identifier text not null,
+  sender_label text not null,
+  reason text not null default 'manual_dismissal' check (reason in ('manual_dismissal')),
+  created_at timestamptz not null default now(),
+  unique(owner_account_id, provider, message_identifier)
+);
+```
+
+Dismissals are message-specific, not sender-specific. If a new email or DM arrives
+from the same sender, it can still appear for review again.
+
 TikTok direct message automation is not enabled in this MVP. Add it only through official
 TikTok-approved messaging access or an approved partner integration.
 
