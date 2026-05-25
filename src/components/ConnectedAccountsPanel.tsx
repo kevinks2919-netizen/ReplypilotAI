@@ -1,8 +1,12 @@
 "use client";
 
-import { Copy, Loader2, Mail, RefreshCw, Send, ShieldCheck } from "lucide-react";
+import { Copy, Loader2, Mail, MessageCircle, RefreshCw, Send, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { GmailMessagePreview, PublicConnectedAccount } from "@/lib/connected-accounts";
+import type {
+  GmailMessagePreview,
+  PublicConnectedAccount,
+  PublicXConnectedAccount
+} from "@/lib/connected-accounts";
 import type { SpendingPotential, Tone } from "@/lib/mock-ai";
 import type { PublicTrialAccount } from "@/lib/trial-auth";
 
@@ -26,6 +30,11 @@ type TikTokRequestsResponse = {
   error?: string;
 };
 
+type XAccountResponse = {
+  account: PublicXConnectedAccount | null;
+  error?: string;
+};
+
 type GeneratedReplySet = {
   replies: string[];
   fanMood: string;
@@ -39,6 +48,7 @@ const toneOptions: Tone[] = ["friendly", "playful", "flirty", "professional", "f
 
 export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccount | null }) {
   const [connectedAccounts, setConnectedAccounts] = useState<PublicConnectedAccount[]>([]);
+  const [xAccount, setXAccount] = useState<PublicXConnectedAccount | null>(null);
   const [messages, setMessages] = useState<GmailMessagePreview[]>([]);
   const [tiktokRequests, setTikTokRequests] = useState<TikTokConnectionRequest[]>([]);
   const [tiktokHandle, setTikTokHandle] = useState("");
@@ -62,6 +72,7 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
     if (account) {
       loadMessages();
       loadTikTokRequests();
+      loadXAccount();
     }
   }, [account]);
 
@@ -96,6 +107,19 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
       setTikTokRequests(payload.requests);
     } catch {
       setTikTokRequests([]);
+    }
+  }
+
+  async function loadXAccount() {
+    try {
+      const response = await fetch("/api/connect/x/account");
+      const payload = (await response.json()) as XAccountResponse;
+
+      if (!response.ok) return;
+
+      setXAccount(payload.account);
+    } catch {
+      setXAccount(null);
     }
   }
 
@@ -531,6 +555,44 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
             No recent Gmail messages loaded yet.
           </p>
         )}
+      </div>
+    </div>
+    <div className="rounded-lg border border-ink/10 bg-white/88 p-5 shadow-soft">
+      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-lg bg-plum/10 px-3 py-2 text-sm font-semibold text-plum">
+            <MessageCircle size={16} />
+            X connector
+          </div>
+          <h2 className="mt-4 text-2xl font-semibold text-ink">X / Twitter DM connector</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/64">
+            Connect an X account with OAuth so ReplyPilot AI can store approved access.
+            DM reading and sending requires X Developer app permissions for Direct Messages
+            before live automation is enabled.
+          </p>
+        </div>
+        <a
+          href="/api/connect/x/start"
+          className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white transition hover:bg-plum"
+        >
+          <MessageCircle size={16} />
+          {xAccount ? "Reconnect X" : "Connect X"}
+        </a>
+      </div>
+
+      <div className="mt-5 rounded-lg bg-mist p-4 text-sm leading-6 text-ink/68">
+        {xAccount ? (
+          <>
+            Connected X account: <span className="font-semibold text-ink">@{xAccount.username}</span>
+          </>
+        ) : (
+          "No X account connected yet."
+        )}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-plum/15 bg-plum/8 p-4 text-sm leading-6 text-plum">
+        Keep auto-reply permission sender-specific. ReplyPilot AI should not send DMs to
+        every X conversation by default.
       </div>
     </div>
     <div className="rounded-lg border border-ink/10 bg-white/88 p-5 shadow-soft">

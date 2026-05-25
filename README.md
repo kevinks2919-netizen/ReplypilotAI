@@ -124,6 +124,51 @@ create table if not exists public.tiktok_connection_requests (
 );
 ```
 
+### X / Twitter Connector
+
+The X connector foundation supports OAuth 2.0 with PKCE and stores the connected
+account. Direct Message reading and sending should only be enabled after your X
+Developer app has the required Direct Message permissions.
+
+Add these environment variables:
+
+```bash
+X_CLIENT_ID=your_x_oauth_client_id
+X_CLIENT_SECRET=your_x_oauth_client_secret
+X_REDIRECT_URI=https://your-domain.com/api/connect/x/callback
+```
+
+In the X Developer Portal, add this callback URL:
+
+```bash
+https://your-domain.com/api/connect/x/callback
+```
+
+Requested scopes:
+
+```bash
+users.read dm.read dm.write offline.access
+```
+
+Create this table to store connected X accounts:
+
+```sql
+create table if not exists public.x_connected_accounts (
+  id uuid primary key default gen_random_uuid(),
+  owner_account_id uuid not null references public.trial_accounts(id) on delete cascade,
+  x_user_id text not null,
+  username text not null,
+  access_token text not null,
+  refresh_token text not null,
+  expires_at timestamptz not null,
+  scopes text not null,
+  status text not null default 'connected' check (status in ('connected', 'needs_reauth')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(owner_account_id)
+);
+```
+
 ## MVP Pricing Tiers
 
 - Free: 20 replies/day

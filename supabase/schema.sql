@@ -61,3 +61,18 @@ create table if not exists public.tiktok_connection_requests (
   updated_at timestamptz not null default now(),
   unique(owner_account_id, tiktok_handle)
 );
+
+create table if not exists public.x_connected_accounts (
+  id uuid primary key default gen_random_uuid(),
+  owner_account_id uuid not null references public.trial_accounts(id) on delete cascade,
+  x_user_id text not null,
+  username text not null,
+  access_token text not null,
+  refresh_token text not null,
+  expires_at timestamptz not null,
+  scopes text not null,
+  status text not null default 'connected' check (status in ('connected', 'needs_reauth')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(owner_account_id)
+);

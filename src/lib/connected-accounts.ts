@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
@@ -56,6 +56,25 @@ export type TikTokConnectionRequest = {
   updated_at: string;
 };
 
+export type XConnectedAccount = {
+  id: string;
+  owner_account_id: string;
+  x_user_id: string;
+  username: string;
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+  scopes: string;
+  status: "connected" | "needs_reauth";
+  created_at: string;
+  updated_at: string;
+};
+
+export type PublicXConnectedAccount = Pick<
+  XConnectedAccount,
+  "id" | "x_user_id" | "username" | "status" | "created_at" | "updated_at"
+>;
+
 const connectedAccountsDataFile = path.join(
   process.env.VERCEL ? "/tmp" : process.cwd(),
   "data",
@@ -74,12 +93,46 @@ const tiktokRequestsDataFile = path.join(
   "tiktok-connection-requests.json"
 );
 
+const xConnectedAccountsDataFile = path.join(
+  process.env.VERCEL ? "/tmp" : process.cwd(),
+  "data",
+  "x-connected-accounts.json"
+);
+
 const gmailScopes = [
   "openid",
   "email",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.send"
 ];
+
+const xScopes = ["users.read", "dm.read", "dm.write", "offline.access"];
+
+export function createXAuthorizationRequest(ownerAccountId: string) {
+  const clientId = process.env.X_CLIENT_ID;
+
+  if (!clientId) {
+    throw new Error("X OAuth is not configured. Add X_CLIENT_ID first.");
+  }
+
+  const codeVerifier = randomBytes(64).toString("base64url");
+  const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
+  const state = `${ownerAccountId}:${randomUUID()}`;
+  const url = new URL("https://x.com/i/oauth2/authorize");
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("redirect_uri", getXRedirectUri());
+  url.searchParams.set("scope", xScopes.join(" "));
+  url.searchParams.set("state", state);
+  url.searchParams.set("code_challenge", codeChallenge);
+  url.searchParams.set("code_challenge_method", "S256");
+
+  return {
+    authorizationUrl: url.toString(),
+    codeVerifier,
+    state
+  };
+}
 
 export function getGmailAuthorizationUrl(ownerAccountId: string) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -323,12 +376,55 @@ export async function requestTikTokConnection(input: {
   return request;
 }
 
+export async function connectXAccount(input: {
+  ownerAccountId: string;
+  code: string;
+  codeVerifier: string;
+}) {
+  const tokenPayload = await exchangeXCodeForTokens(input.code, input.codeVerifier);
+  const accessToken = getRequiredString(tokenPayload.access_token, "X access token missing.");
+  const refreshToken = getRequiredString(tokenPayload.refresh_token, "X refresh token missing.");
+  const expiresIn = typeof tokenPayload.expires_in === "number" ? tokenPayload.expires_in : 7200;
+  const profile = await fetchXProfile(accessToken);
+  const now = new Date().toISOString();
+
+  const connectedAccount: XConnectedAccount = {
+    id: randomUUID(),
+    owner_account_id: input.ownerAccountId,
+    x_user_id: profile.id,
+    username: profile.username,
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
+    scopes: xScopes.join(" "),
+    status: "connected",
+    created_at: now,
+    updated_at: now
+  };
+
+  await upsertXConnectedAccount(connectedAccount);
+  return toPublicXConnectedAccount(connectedAccount);
+}
+
+export async function getPublicXConnectedAccount(ownerAccountId: string) {
+  const account = await getXConnectedAccount(ownerAccountId);
+  return account ? toPublicXConnectedAccount(account) : null;
+}
+
 function getGmailRedirectUri() {
   const configured = process.env.GOOGLE_REDIRECT_URI;
   if (configured) return configured;
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   return `${appUrl.replace(/\/$/, "")}/api/connect/gmail/callback`;
+}
+
+function getXRedirectUri() {
+  const configured = process.env.X_REDIRECT_URI;
+  if (configured) return configured;
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return `${appUrl.replace(/\/$/, "")}/api/connect/x/callback`;
 }
 
 async function exchangeCodeForTokens(code: string) {
@@ -405,6 +501,41 @@ async function refreshGmailAccountIfNeeded(account: ConnectedAccount) {
   return updated;
 }
 
+async function exchangeXCodeForTokens(code: string, codeVerifier: string) {
+  const clientId = process.env.X_CLIENT_ID;
+  const clientSecret = process.env.X_CLIENT_SECRET;
+
+  if (!clientId) {
+    throw new Error("X OAuth is not configured. Add X_CLIENT_ID.");
+  }
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded"
+  };
+
+  if (clientSecret) {
+    headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
+  }
+
+  const response = await fetch("https://api.x.com/2/oauth2/token", {
+    method: "POST",
+    headers,
+    body: new URLSearchParams({
+      code,
+      grant_type: "authorization_code",
+      client_id: clientId,
+      redirect_uri: getXRedirectUri(),
+      code_verifier: codeVerifier
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  return (await response.json()) as Record<string, unknown>;
+}
+
 async function fetchGoogleProfile(accessToken: string) {
   const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
     headers: {
@@ -419,6 +550,24 @@ async function fetchGoogleProfile(accessToken: string) {
   const payload = (await response.json()) as Record<string, unknown>;
   return {
     email: getRequiredString(payload.email, "Google profile email missing.")
+  };
+}
+
+async function fetchXProfile(accessToken: string) {
+  const response = await fetch("https://api.x.com/2/users/me?user.fields=username", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  const payload = (await response.json()) as { data?: { id?: unknown; username?: unknown } };
+  return {
+    id: getRequiredString(payload.data?.id, "X user id missing."),
+    username: getRequiredString(payload.data?.username, "X username missing.")
   };
 }
 
@@ -445,6 +594,11 @@ async function getGmailAccount(ownerAccountId: string) {
   );
 }
 
+async function getXConnectedAccount(ownerAccountId: string) {
+  const accounts = await readXConnectedAccounts();
+  return accounts.find((account) => account.owner_account_id === ownerAccountId) ?? null;
+}
+
 async function upsertConnectedAccount(account: ConnectedAccount) {
   const accounts = await readConnectedAccounts();
   const existing = accounts.find(
@@ -461,6 +615,22 @@ async function upsertConnectedAccount(account: ConnectedAccount) {
   }
 
   await saveConnectedAccount(account);
+}
+
+async function upsertXConnectedAccount(account: XConnectedAccount) {
+  const accounts = await readXConnectedAccounts();
+  const existing = accounts.find((item) => item.owner_account_id === account.owner_account_id);
+
+  if (existing) {
+    await updateXConnectedAccount({
+      ...account,
+      id: existing.id,
+      created_at: existing.created_at
+    });
+    return;
+  }
+
+  await saveXConnectedAccount(account);
 }
 
 async function saveConnectedAccount(account: ConnectedAccount) {
@@ -492,6 +662,33 @@ async function updateConnectedAccount(account: ConnectedAccount) {
   await writeLocalConnectedAccounts(accounts.map((item) => (item.id === account.id ? account : item)));
 }
 
+async function saveXConnectedAccount(account: XConnectedAccount) {
+  const supabase = getSupabaseAdminClient();
+
+  if (supabase) {
+    const { error } = await supabase.from("x_connected_accounts").insert(account);
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  const accounts = await readLocalXConnectedAccounts();
+  accounts.push(account);
+  await writeLocalXConnectedAccounts(accounts);
+}
+
+async function updateXConnectedAccount(account: XConnectedAccount) {
+  const supabase = getSupabaseAdminClient();
+
+  if (supabase) {
+    const { error } = await supabase.from("x_connected_accounts").upsert(account, { onConflict: "id" });
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  const accounts = await readLocalXConnectedAccounts();
+  await writeLocalXConnectedAccounts(accounts.map((item) => (item.id === account.id ? account : item)));
+}
+
 async function readConnectedAccounts() {
   const supabase = getSupabaseAdminClient();
 
@@ -502,6 +699,21 @@ async function readConnectedAccounts() {
   }
 
   return readLocalConnectedAccounts();
+}
+
+async function readXConnectedAccounts() {
+  const supabase = getSupabaseAdminClient();
+
+  if (supabase) {
+    const { data, error } = await supabase.from("x_connected_accounts").select("*");
+    if (error) {
+      if (error.message.includes("x_connected_accounts")) return [];
+      throw new Error(error.message);
+    }
+    return Array.isArray(data) ? data.filter(isXConnectedAccount) : [];
+  }
+
+  return readLocalXConnectedAccounts();
 }
 
 async function upsertAutoReplyApproval(approval: AutoReplyApproval) {
@@ -623,6 +835,21 @@ async function readLocalConnectedAccounts() {
   }
 }
 
+async function readLocalXConnectedAccounts() {
+  try {
+    const file = await readFile(xConnectedAccountsDataFile, "utf-8");
+    const parsed = JSON.parse(file);
+    return Array.isArray(parsed) ? (parsed.filter(isXConnectedAccount) as XConnectedAccount[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeLocalXConnectedAccounts(accounts: XConnectedAccount[]) {
+  await mkdir(path.dirname(xConnectedAccountsDataFile), { recursive: true });
+  await writeFile(xConnectedAccountsDataFile, `${JSON.stringify(accounts, null, 2)}\n`, "utf-8");
+}
+
 async function writeLocalConnectedAccounts(accounts: ConnectedAccount[]) {
   await mkdir(path.dirname(connectedAccountsDataFile), { recursive: true });
   await writeFile(connectedAccountsDataFile, `${JSON.stringify(accounts, null, 2)}\n`, "utf-8");
@@ -633,6 +860,17 @@ function toPublicConnectedAccount(account: ConnectedAccount): PublicConnectedAcc
     id: account.id,
     provider: account.provider,
     provider_email: account.provider_email,
+    status: account.status,
+    created_at: account.created_at,
+    updated_at: account.updated_at
+  };
+}
+
+function toPublicXConnectedAccount(account: XConnectedAccount): PublicXConnectedAccount {
+  return {
+    id: account.id,
+    x_user_id: account.x_user_id,
+    username: account.username,
     status: account.status,
     created_at: account.created_at,
     updated_at: account.updated_at
@@ -766,5 +1004,24 @@ function isTikTokConnectionRequest(value: unknown): value is TikTokConnectionReq
     typeof request.notes === "string" &&
     typeof request.created_at === "string" &&
     typeof request.updated_at === "string"
+  );
+}
+
+function isXConnectedAccount(value: unknown): value is XConnectedAccount {
+  if (!value || typeof value !== "object") return false;
+  const account = value as Record<string, unknown>;
+
+  return (
+    typeof account.id === "string" &&
+    typeof account.owner_account_id === "string" &&
+    typeof account.x_user_id === "string" &&
+    typeof account.username === "string" &&
+    typeof account.access_token === "string" &&
+    typeof account.refresh_token === "string" &&
+    typeof account.expires_at === "string" &&
+    typeof account.scopes === "string" &&
+    (account.status === "connected" || account.status === "needs_reauth") &&
+    typeof account.created_at === "string" &&
+    typeof account.updated_at === "string"
   );
 }

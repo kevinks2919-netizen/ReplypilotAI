@@ -51,6 +51,7 @@ const workflow = [
 type ConnectedAccountsPageProps = {
   searchParams?: Promise<{
     gmail?: string;
+    x?: string;
   }>;
 };
 
@@ -58,6 +59,7 @@ export default async function ConnectedAccountsPage({ searchParams }: ConnectedA
   const account = await getCurrentTrialAccount().catch(() => null);
   const params = await searchParams;
   const gmailStatus = params?.gmail;
+  const xStatus = params?.x;
 
   return (
     <main className="min-h-screen px-4 py-5 sm:px-8">
@@ -152,6 +154,22 @@ export default async function ConnectedAccountsPage({ searchParams }: ConnectedA
           {gmailStatus === "connected" ? (
             <div className="mb-4 rounded-lg border border-mint/20 bg-mint/10 p-4 text-sm leading-6 text-mint">
               Gmail connected successfully.
+            </div>
+          ) : null}
+          {xStatus === "not_configured" ? (
+            <div className="mb-4 rounded-lg border border-coral/20 bg-coral/8 p-4 text-sm leading-6 text-coral">
+              X is not configured yet. Add X_CLIENT_ID, X_CLIENT_SECRET, and X_REDIRECT_URI
+              in Vercel Production environment variables, then redeploy.
+            </div>
+          ) : null}
+          {xStatus === "failed" ? (
+            <div className="mb-4 rounded-lg border border-coral/20 bg-coral/8 p-4 text-sm leading-6 text-coral">
+              X connection failed. Check your X OAuth callback URL, app permissions, and Vercel env vars.
+            </div>
+          ) : null}
+          {xStatus === "connected" ? (
+            <div className="mb-4 rounded-lg border border-mint/20 bg-mint/10 p-4 text-sm leading-6 text-mint">
+              X account connected successfully.
             </div>
           ) : null}
           <ConnectedAccountsPanel account={account} />
