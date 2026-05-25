@@ -345,10 +345,39 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
 
                   {replyDrafts[message.id] ? (
                     <div className="mt-4 grid gap-3">
-                      <div className="grid gap-2 text-xs text-ink/60 sm:grid-cols-3">
-                        <span>Mood: {replyDrafts[message.id].fanMood}</span>
-                        <span>Urgency: {replyDrafts[message.id].urgencyScore}/10</span>
-                        <span>Spend: {replyDrafts[message.id].spendingPotential}</span>
+                      <div className="rounded-lg border border-ink/10 bg-white p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink/45">
+                          Mood detection before sending
+                        </p>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                          <div className="rounded-lg bg-mist p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink/45">
+                              Fan mood
+                            </p>
+                            <p className="mt-1 text-sm font-semibold capitalize text-ink">
+                              {replyDrafts[message.id].fanMood}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-mist p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink/45">
+                              Urgency
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-ink">
+                              {replyDrafts[message.id].urgencyScore}/10
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-mist p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink/45">
+                              Spend potential
+                            </p>
+                            <p className="mt-1 text-sm font-semibold capitalize text-ink">
+                              {replyDrafts[message.id].spendingPotential}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-xs leading-5 text-ink/55">
+                          Review these signals and edit the reply before clicking Send.
+                        </p>
                       </div>
                       {replyDrafts[message.id].replies.map((reply, index) => {
                         const replyId = `${message.id}-${index}`;
