@@ -9,9 +9,13 @@ export async function GET() {
     redirect("/login");
   }
 
+  let authorizationUrl: string;
+
   try {
-    redirect(getGmailAuthorizationUrl(account.id));
+    authorizationUrl = getGmailAuthorizationUrl(account.id);
   } catch {
     redirect("/connected-accounts?gmail=not_configured");
   }
+
+  redirect(authorizationUrl);
 }
