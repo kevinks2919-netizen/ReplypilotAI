@@ -48,3 +48,16 @@ create table if not exists public.auto_reply_approvals (
   updated_at timestamptz not null default now(),
   unique(owner_account_id, provider, sender_identifier)
 );
+
+create table if not exists public.tiktok_connection_requests (
+  id uuid primary key default gen_random_uuid(),
+  owner_account_id uuid not null references public.trial_accounts(id) on delete cascade,
+  tiktok_handle text not null,
+  account_type text not null check (account_type in ('creator', 'agency', 'brand')),
+  requested_capability text not null default 'dm_review' check (requested_capability in ('dm_review')),
+  status text not null default 'requested' check (status in ('requested', 'approved', 'blocked')),
+  notes text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(owner_account_id, tiktok_handle)
+);

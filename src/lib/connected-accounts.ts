@@ -44,6 +44,18 @@ export type AutoReplyApproval = {
   updated_at: string;
 };
 
+export type TikTokConnectionRequest = {
+  id: string;
+  owner_account_id: string;
+  tiktok_handle: string;
+  account_type: "creator" | "agency" | "brand";
+  requested_capability: "dm_review";
+  status: "requested" | "approved" | "blocked";
+  notes: string;
+  created_at: string;
+  updated_at: string;
+};
+
 const connectedAccountsDataFile = path.join(
   process.env.VERCEL ? "/tmp" : process.cwd(),
   "data",
@@ -54,6 +66,12 @@ const autoReplyApprovalsDataFile = path.join(
   process.env.VERCEL ? "/tmp" : process.cwd(),
   "data",
   "auto-reply-approvals.json"
+);
+
+const tiktokRequestsDataFile = path.join(
+  process.env.VERCEL ? "/tmp" : process.cwd(),
+  "data",
+  "tiktok-connection-requests.json"
 );
 
 const gmailScopes = [
@@ -262,6 +280,47 @@ export async function pauseAutoReplySender(input: {
 
   await upsertAutoReplyApproval(updated);
   return updated;
+}
+
+export async function getTikTokConnectionRequests(ownerAccountId: string) {
+  const requests = await readTikTokConnectionRequests();
+  return requests.filter((request) => request.owner_account_id === ownerAccountId);
+}
+
+export async function requestTikTokConnection(input: {
+  ownerAccountId: string;
+  tiktokHandle: string;
+  accountType: "creator" | "agency" | "brand";
+  notes: string;
+}) {
+  const now = new Date().toISOString();
+  const normalizedHandle = normalizeTikTokHandle(input.tiktokHandle);
+
+  if (!normalizedHandle) {
+    throw new Error("TikTok handle is required.");
+  }
+
+  const existingRequests = await readTikTokConnectionRequests();
+  const existing = existingRequests.find(
+    (request) =>
+      request.owner_account_id === input.ownerAccountId &&
+      request.tiktok_handle.toLowerCase() === normalizedHandle.toLowerCase()
+  );
+
+  const request: TikTokConnectionRequest = {
+    id: existing?.id ?? randomUUID(),
+    owner_account_id: input.ownerAccountId,
+    tiktok_handle: normalizedHandle,
+    account_type: input.accountType,
+    requested_capability: "dm_review",
+    status: existing?.status ?? "requested",
+    notes: input.notes.trim(),
+    created_at: existing?.created_at ?? now,
+    updated_at: now
+  };
+
+  await upsertTikTokConnectionRequest(request);
+  return request;
 }
 
 function getGmailRedirectUri() {
@@ -484,6 +543,61 @@ async function readAutoReplyApprovals() {
   return readLocalAutoReplyApprovals();
 }
 
+async function upsertTikTokConnectionRequest(request: TikTokConnectionRequest) {
+  const supabase = getSupabaseAdminClient();
+
+  if (supabase) {
+    const { error } = await supabase
+      .from("tiktok_connection_requests")
+      .upsert(request, { onConflict: "owner_account_id,tiktok_handle" });
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  const requests = await readLocalTikTokConnectionRequests();
+  const nextRequests = requests.filter(
+    (item) =>
+      !(
+        item.owner_account_id === request.owner_account_id &&
+        item.tiktok_handle.toLowerCase() === request.tiktok_handle.toLowerCase()
+      )
+  );
+  nextRequests.push(request);
+  await writeLocalTikTokConnectionRequests(nextRequests);
+}
+
+async function readTikTokConnectionRequests() {
+  const supabase = getSupabaseAdminClient();
+
+  if (supabase) {
+    const { data, error } = await supabase.from("tiktok_connection_requests").select("*");
+    if (error) {
+      if (error.message.includes("tiktok_connection_requests")) return [];
+      throw new Error(error.message);
+    }
+    return Array.isArray(data) ? data.filter(isTikTokConnectionRequest) : [];
+  }
+
+  return readLocalTikTokConnectionRequests();
+}
+
+async function readLocalTikTokConnectionRequests() {
+  try {
+    const file = await readFile(tiktokRequestsDataFile, "utf-8");
+    const parsed = JSON.parse(file);
+    return Array.isArray(parsed)
+      ? (parsed.filter(isTikTokConnectionRequest) as TikTokConnectionRequest[])
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeLocalTikTokConnectionRequests(requests: TikTokConnectionRequest[]) {
+  await mkdir(path.dirname(tiktokRequestsDataFile), { recursive: true });
+  await writeFile(tiktokRequestsDataFile, `${JSON.stringify(requests, null, 2)}\n`, "utf-8");
+}
+
 async function readLocalAutoReplyApprovals() {
   try {
     const file = await readFile(autoReplyApprovalsDataFile, "utf-8");
@@ -587,6 +701,10 @@ function extractEmailAddress(value: string) {
   return (match?.[1] ?? value).trim().toLowerCase();
 }
 
+function normalizeTikTokHandle(value: string) {
+  return value.trim().replace(/^@+/, "");
+}
+
 function toBase64Url(value: string) {
   return Buffer.from(value, "utf-8")
     .toString("base64")
@@ -627,5 +745,26 @@ function isAutoReplyApproval(value: unknown): value is AutoReplyApproval {
     (approval.status === "approved" || approval.status === "paused") &&
     typeof approval.created_at === "string" &&
     typeof approval.updated_at === "string"
+  );
+}
+
+function isTikTokConnectionRequest(value: unknown): value is TikTokConnectionRequest {
+  if (!value || typeof value !== "object") return false;
+  const request = value as Record<string, unknown>;
+
+  return (
+    typeof request.id === "string" &&
+    typeof request.owner_account_id === "string" &&
+    typeof request.tiktok_handle === "string" &&
+    (request.account_type === "creator" ||
+      request.account_type === "agency" ||
+      request.account_type === "brand") &&
+    request.requested_capability === "dm_review" &&
+    (request.status === "requested" ||
+      request.status === "approved" ||
+      request.status === "blocked") &&
+    typeof request.notes === "string" &&
+    typeof request.created_at === "string" &&
+    typeof request.updated_at === "string"
   );
 }

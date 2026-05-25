@@ -12,6 +12,20 @@ type GmailMessagesResponse = {
   error?: string;
 };
 
+type TikTokConnectionRequest = {
+  id: string;
+  tiktok_handle: string;
+  account_type: "creator" | "agency" | "brand";
+  status: "requested" | "approved" | "blocked";
+  notes: string;
+};
+
+type TikTokRequestsResponse = {
+  requests: TikTokConnectionRequest[];
+  request?: TikTokConnectionRequest;
+  error?: string;
+};
+
 type GeneratedReplySet = {
   replies: string[];
   fanMood: string;
@@ -26,9 +40,15 @@ const toneOptions: Tone[] = ["friendly", "playful", "flirty", "professional", "f
 export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccount | null }) {
   const [connectedAccounts, setConnectedAccounts] = useState<PublicConnectedAccount[]>([]);
   const [messages, setMessages] = useState<GmailMessagePreview[]>([]);
+  const [tiktokRequests, setTikTokRequests] = useState<TikTokConnectionRequest[]>([]);
+  const [tiktokHandle, setTikTokHandle] = useState("");
+  const [tiktokAccountType, setTikTokAccountType] = useState<"creator" | "agency" | "brand">("creator");
+  const [tiktokNotes, setTikTokNotes] = useState("");
   const [replyDrafts, setReplyDrafts] = useState<Record<string, GeneratedReplySet>>({});
   const [error, setError] = useState("");
+  const [tiktokSuccess, setTikTokSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSubmittingTikTok, setIsSubmittingTikTok] = useState(false);
   const [pendingSender, setPendingSender] = useState("");
   const [generatingMessageId, setGeneratingMessageId] = useState("");
   const [messageTones, setMessageTones] = useState<Record<string, Tone>>({});
@@ -41,6 +61,7 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
   useEffect(() => {
     if (account) {
       loadMessages();
+      loadTikTokRequests();
     }
   }, [account]);
 
@@ -62,6 +83,56 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
       setError(loadError instanceof Error ? loadError.message : "Could not load Gmail messages.");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function loadTikTokRequests() {
+    try {
+      const response = await fetch("/api/connect/tiktok/request");
+      const payload = (await response.json()) as TikTokRequestsResponse;
+
+      if (!response.ok) return;
+
+      setTikTokRequests(payload.requests);
+    } catch {
+      setTikTokRequests([]);
+    }
+  }
+
+  async function submitTikTokRequest() {
+    setIsSubmittingTikTok(true);
+    setError("");
+    setTikTokSuccess("");
+
+    try {
+      const response = await fetch("/api/connect/tiktok/request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          tiktokHandle,
+          accountType: tiktokAccountType,
+          notes: tiktokNotes
+        })
+      });
+      const payload = (await response.json()) as TikTokRequestsResponse;
+
+      if (!response.ok || !payload.request) {
+        throw new Error(payload.error ?? "Could not request TikTok access.");
+      }
+
+      setTikTokRequests((currentRequests) => [
+        payload.request as TikTokConnectionRequest,
+        ...currentRequests.filter((request) => request.id !== payload.request?.id)
+      ]);
+      setTikTokHandle("");
+      setTikTokNotes("");
+      setTikTokSuccess("TikTok connection request saved.");
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Could not request TikTok access.");
+    } finally {
+      setIsSubmittingTikTok(false);
     }
   }
 
@@ -218,6 +289,7 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
   }
 
   return (
+    <div className="space-y-5">
     <div className="rounded-lg border border-ink/10 bg-white/88 p-5 shadow-soft">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
@@ -460,6 +532,91 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
           </p>
         )}
       </div>
+    </div>
+    <div className="rounded-lg border border-ink/10 bg-white/88 p-5 shadow-soft">
+      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-lg bg-coral/10 px-3 py-2 text-sm font-semibold text-coral">
+            <ShieldCheck size={16} />
+            TikTok access request
+          </div>
+          <h2 className="mt-4 text-2xl font-semibold text-ink">TikTok DM connector</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-ink/64">
+            TikTok direct message reading and sending requires official approved access.
+            Save the TikTok account here so ReplyPilot AI can track approved accounts,
+            compliance status, and future connector rollout.
+          </p>
+        </div>
+        <div className="rounded-lg border border-coral/20 bg-coral/8 p-4 text-sm leading-6 text-coral lg:max-w-sm">
+          Do not use password sharing, scraping, browser automation, or unofficial TikTok
+          DM tools for client accounts.
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 lg:grid-cols-[0.7fr_0.4fr]">
+        <input
+          value={tiktokHandle}
+          onChange={(event) => setTikTokHandle(event.target.value)}
+          className="min-h-11 rounded-lg border border-ink/15 bg-mist/60 px-4 py-3 text-sm outline-none transition focus:border-coral focus:ring-4 focus:ring-coral/15"
+          placeholder="@creatorhandle"
+        />
+        <select
+          value={tiktokAccountType}
+          onChange={(event) =>
+            setTikTokAccountType(event.target.value as "creator" | "agency" | "brand")
+          }
+          className="min-h-11 rounded-lg border border-ink/15 bg-white px-4 py-3 text-sm capitalize outline-none transition focus:border-coral focus:ring-4 focus:ring-coral/15"
+        >
+          <option value="creator">Creator</option>
+          <option value="agency">Agency</option>
+          <option value="brand">Brand</option>
+        </select>
+      </div>
+      <textarea
+        value={tiktokNotes}
+        onChange={(event) => setTikTokNotes(event.target.value)}
+        className="mt-3 min-h-24 w-full resize-y rounded-lg border border-ink/15 bg-mist/60 px-4 py-3 text-sm leading-6 outline-none transition focus:border-coral focus:ring-4 focus:ring-coral/15"
+        placeholder="Notes: client use case, expected DM volume, accounts that should be approved for auto-reply..."
+      />
+      <button
+        type="button"
+        onClick={submitTikTokRequest}
+        disabled={isSubmittingTikTok}
+        className="mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white transition hover:bg-plum disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {isSubmittingTikTok ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
+        {isSubmittingTikTok ? "Saving..." : "Request TikTok connector"}
+      </button>
+
+      {tiktokSuccess ? (
+        <p className="mt-4 rounded-lg border border-mint/20 bg-mint/10 p-4 text-sm text-mint">
+          {tiktokSuccess}
+        </p>
+      ) : null}
+
+      <div className="mt-5 grid gap-3">
+        {tiktokRequests.length > 0 ? (
+          tiktokRequests.map((request) => (
+            <div key={request.id} className="rounded-lg border border-ink/10 bg-mist p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="font-semibold text-ink">@{request.tiktok_handle}</p>
+                <span className="rounded-lg bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink/55">
+                  {request.status}
+                </span>
+              </div>
+              <p className="mt-2 text-sm capitalize text-ink/60">{request.account_type}</p>
+              {request.notes ? (
+                <p className="mt-2 text-sm leading-6 text-ink/64">{request.notes}</p>
+              ) : null}
+            </div>
+          ))
+        ) : (
+          <p className="rounded-lg bg-mist p-4 text-sm text-ink/60">
+            No TikTok connector requests yet.
+          </p>
+        )}
+      </div>
+    </div>
     </div>
   );
 }
