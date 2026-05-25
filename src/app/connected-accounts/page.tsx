@@ -52,6 +52,7 @@ type ConnectedAccountsPageProps = {
   searchParams?: Promise<{
     gmail?: string;
     x?: string;
+    reason?: string;
   }>;
 };
 
@@ -60,6 +61,7 @@ export default async function ConnectedAccountsPage({ searchParams }: ConnectedA
   const params = await searchParams;
   const gmailStatus = params?.gmail;
   const xStatus = params?.x;
+  const xFailureReason = params?.reason;
 
   return (
     <main className="min-h-screen px-4 py-5 sm:px-8">
@@ -164,7 +166,7 @@ export default async function ConnectedAccountsPage({ searchParams }: ConnectedA
           ) : null}
           {xStatus === "failed" ? (
             <div className="mb-4 rounded-lg border border-coral/20 bg-coral/8 p-4 text-sm leading-6 text-coral">
-              X connection failed. Check your X OAuth callback URL, app permissions, and Vercel env vars.
+              X connection failed. {getXFailureHelp(xFailureReason)}
             </div>
           ) : null}
           {xStatus === "connected" ? (
@@ -203,4 +205,25 @@ export default async function ConnectedAccountsPage({ searchParams }: ConnectedA
       </div>
     </main>
   );
+}
+
+function getXFailureHelp(reason: string | undefined) {
+  switch (reason) {
+    case "access_denied":
+      return "The X authorization was denied. Try again and approve the app permissions.";
+    case "invalid_oauth_session":
+      return "The login session expired or did not match. Start again from the Connect X button.";
+    case "client_credentials":
+      return "Check X_CLIENT_ID and X_CLIENT_SECRET in Vercel Production, then redeploy.";
+    case "callback_or_expired_code":
+      return "Check that the X callback URL exactly matches X_REDIRECT_URI, then try again quickly.";
+    case "offline_access_missing":
+      return "Confirm the X app supports offline.access, then reconnect.";
+    case "x_access":
+      return "Your X app may not have the required API access, Direct Message permissions, or credits.";
+    case "token_exchange":
+      return "The X token exchange failed. Check Vercel logs for the exact X response.";
+    default:
+      return "Check your X OAuth callback URL, app permissions, and Vercel env vars.";
+  }
 }

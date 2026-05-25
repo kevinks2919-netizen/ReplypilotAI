@@ -383,7 +383,10 @@ export async function connectXAccount(input: {
 }) {
   const tokenPayload = await exchangeXCodeForTokens(input.code, input.codeVerifier);
   const accessToken = getRequiredString(tokenPayload.access_token, "X access token missing.");
-  const refreshToken = getRequiredString(tokenPayload.refresh_token, "X refresh token missing.");
+  const refreshToken = getRequiredString(
+    tokenPayload.refresh_token,
+    "X refresh token missing. Confirm the X app allows offline.access and try reconnecting."
+  );
   const expiresIn = typeof tokenPayload.expires_in === "number" ? tokenPayload.expires_in : 7200;
   const profile = await fetchXProfile(accessToken);
   const now = new Date().toISOString();
