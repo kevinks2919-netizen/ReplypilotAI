@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { redirect } from "next/navigation";
 import { createXAuthorizationRequest } from "@/lib/connected-accounts";
 import { getCurrentTrialAccount } from "@/lib/trial-auth";
@@ -18,8 +18,8 @@ export async function GET() {
     redirect("/connected-accounts?x=not_configured");
   }
 
-  const cookieStore = await cookies();
-  cookieStore.set("replypilot_x_oauth", JSON.stringify({
+  const response = NextResponse.redirect(authorizationRequest.authorizationUrl);
+  response.cookies.set("replypilot_x_oauth", JSON.stringify({
     codeVerifier: authorizationRequest.codeVerifier,
     state: authorizationRequest.state
   }), {
@@ -30,5 +30,5 @@ export async function GET() {
     path: "/"
   });
 
-  redirect(authorizationRequest.authorizationUrl);
+  return response;
 }
