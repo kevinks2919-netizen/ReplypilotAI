@@ -34,10 +34,10 @@ export default async function AdminPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-coral">
                 Internal dashboard
               </p>
-              <h1 className="mt-3 text-4xl font-semibold text-ink">Waitlist leads</h1>
+              <h1 className="mt-3 text-4xl font-semibold text-ink">Launch operations</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/64">
-                Track early beta interest, creator versus agency split, common pain
-                points, and export leads for follow-up.
+                Track beta leads, creator versus agency split, connector requests,
+                connected accounts, and export leads for follow-up.
               </p>
             </section>
 

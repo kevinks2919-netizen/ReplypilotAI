@@ -1,17 +1,22 @@
 "use client";
 
-import { Download, Loader2, Search, Users } from "lucide-react";
+import { Download, Loader2, PlugZap, Search, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { AdminConnectorRow, AdminConnectorSource } from "@/lib/admin-connectors";
 import type { WaitlistLead } from "@/lib/waitlist";
 
 type LeadsResponse = {
   leads: WaitlistLead[];
   source: "local" | "mock" | "supabase";
+  connectors: AdminConnectorRow[];
+  connectorSource: AdminConnectorSource;
 };
 
 export function AdminDashboard() {
   const [leads, setLeads] = useState<WaitlistLead[]>([]);
+  const [connectors, setConnectors] = useState<AdminConnectorRow[]>([]);
   const [source, setSource] = useState<"local" | "mock" | "supabase">("mock");
+  const [connectorSource, setConnectorSource] = useState<AdminConnectorSource>("empty");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -28,6 +33,8 @@ export function AdminDashboard() {
 
         setLeads(payload.leads);
         setSource(payload.source);
+        setConnectors(payload.connectors ?? []);
+        setConnectorSource(payload.connectorSource ?? "empty");
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Could not load leads.");
       } finally {
@@ -42,14 +49,16 @@ export function AdminDashboard() {
     const creatorCount = leads.filter((lead) => lead.profile_type === "creator").length;
     const agencyCount = leads.filter((lead) => lead.profile_type === "agency").length;
     const painPoints = getCommonPainPoints(leads);
+    const connectorCounts = getConnectorCounts(connectors);
 
     return {
       total: leads.length,
       creatorCount,
       agencyCount,
-      painPoints
+      painPoints,
+      connectorCounts
     };
-  }, [leads]);
+  }, [leads, connectors]);
 
   const filteredLeads = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -126,6 +135,62 @@ export function AdminDashboard() {
         <MetricCard label="Total leads" value={metrics.total.toString()} />
         <MetricCard label="Creators" value={metrics.creatorCount.toString()} />
         <MetricCard label="Agencies" value={metrics.agencyCount.toString()} />
+      </section>
+
+      <section className="rounded-lg border border-ink/10 bg-white/88 p-5 shadow-sm">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+          <div>
+            <div className="flex items-center gap-2">
+              <PlugZap className="text-coral" size={20} />
+              <h2 className="text-lg font-semibold text-ink">Connector requests and status</h2>
+            </div>
+            <p className="mt-1 text-sm text-ink/55">
+              Data source: {connectorSource === "supabase" ? "Supabase" : "no connector database yet"}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+            <ConnectorBadge label="Gmail" value={metrics.connectorCounts.gmail} />
+            <ConnectorBadge label="X" value={metrics.connectorCounts.x} />
+            <ConnectorBadge label="TikTok" value={metrics.connectorCounts.tiktok} />
+            <ConnectorBadge label="OnlyFans" value={metrics.connectorCounts.onlyfans} />
+          </div>
+        </div>
+
+        <div className="mt-5 overflow-x-auto">
+          <table className="min-w-[820px] w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-ink/10 text-xs uppercase tracking-[0.12em] text-ink/45">
+                <th className="py-3 pr-4 font-semibold">Platform</th>
+                <th className="py-3 pr-4 font-semibold">Account</th>
+                <th className="py-3 pr-4 font-semibold">Status</th>
+                <th className="py-3 pr-4 font-semibold">Notes</th>
+                <th className="py-3 pr-4 font-semibold">Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {connectors.map((connector) => (
+                <tr key={`${connector.platform}-${connector.id}`} className="border-b border-ink/8 align-top">
+                  <td className="py-4 pr-4 font-semibold capitalize text-ink">
+                    {getPlatformLabel(connector.platform)}
+                  </td>
+                  <td className="py-4 pr-4 text-ink/68">{connector.account}</td>
+                  <td className="py-4 pr-4">
+                    <span className="rounded-lg bg-mist px-2 py-1 text-xs font-semibold uppercase tracking-[0.1em] text-ink/58">
+                      {connector.status}
+                    </span>
+                  </td>
+                  <td className="max-w-md py-4 pr-4 text-ink/68">{connector.notes || "N/A"}</td>
+                  <td className="py-4 pr-4 text-ink/68">{formatDate(connector.updated_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {connectors.length === 0 ? (
+            <p className="py-8 text-center text-sm text-ink/58">
+              No connector records yet. Connect Gmail/X or submit TikTok/OnlyFans requests to see them here.
+            </p>
+          ) : null}
+        </div>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[0.6fr_1fr]">
@@ -242,6 +307,15 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ConnectorBadge({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg bg-mist px-3 py-2">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink/45">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-ink">{value}</p>
+    </div>
+  );
+}
+
 function getCommonPainPoints(leads: WaitlistLead[]) {
   const counts = new Map<string, number>();
 
@@ -254,6 +328,21 @@ function getCommonPainPoints(leads: WaitlistLead[]) {
     .sort((first, second) => second[1] - first[1])
     .slice(0, 5)
     .map(([label, count]) => ({ label, count }));
+}
+
+function getConnectorCounts(connectors: AdminConnectorRow[]) {
+  return {
+    gmail: connectors.filter((connector) => connector.platform === "gmail").length,
+    x: connectors.filter((connector) => connector.platform === "x").length,
+    tiktok: connectors.filter((connector) => connector.platform === "tiktok").length,
+    onlyfans: connectors.filter((connector) => connector.platform === "onlyfans").length
+  };
+}
+
+function getPlatformLabel(platform: AdminConnectorRow["platform"]) {
+  if (platform === "x") return "X";
+  if (platform === "onlyfans") return "OnlyFans";
+  return platform;
 }
 
 function normalizePainPoint(value: string) {
