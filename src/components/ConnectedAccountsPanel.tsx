@@ -1,8 +1,9 @@
 "use client";
 
-import { Loader2, Mail, RefreshCw, ShieldCheck } from "lucide-react";
+import { Copy, Loader2, Mail, RefreshCw, Send, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { GmailMessagePreview, PublicConnectedAccount } from "@/lib/connected-accounts";
+import type { SpendingPotential } from "@/lib/mock-ai";
 import type { PublicTrialAccount } from "@/lib/trial-auth";
 
 type GmailMessagesResponse = {
@@ -11,12 +12,24 @@ type GmailMessagesResponse = {
   error?: string;
 };
 
+type GeneratedReplySet = {
+  replies: string[];
+  fanMood: string;
+  urgencyScore: number;
+  spendingPotential: SpendingPotential;
+  source?: "mock" | "openai";
+  error?: string;
+};
+
 export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccount | null }) {
   const [connectedAccounts, setConnectedAccounts] = useState<PublicConnectedAccount[]>([]);
   const [messages, setMessages] = useState<GmailMessagePreview[]>([]);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, GeneratedReplySet>>({});
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [pendingSender, setPendingSender] = useState("");
+  const [generatingMessageId, setGeneratingMessageId] = useState("");
+  const [copiedReplyId, setCopiedReplyId] = useState("");
 
   const gmailAccount = connectedAccounts.find((item) => item.provider === "gmail");
 
@@ -82,6 +95,48 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
     } finally {
       setPendingSender("");
     }
+  }
+
+  async function generateRepliesForMessage(message: GmailMessagePreview) {
+    if (!message.autoReplyApproved) {
+      setError("Approve this sender before generating auto-reply options.");
+      return;
+    }
+
+    setGeneratingMessageId(message.id);
+    setError("");
+
+    try {
+      const response = await fetch("/api/generate-replies", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          tone: "professional",
+          message: `From: ${message.from}\nSubject: ${message.subject}\nMessage preview: ${message.snippet}`
+        })
+      });
+      const payload = (await response.json()) as GeneratedReplySet;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not generate replies.");
+      }
+
+      setReplyDrafts((currentDrafts) => ({
+        ...currentDrafts,
+        [message.id]: payload
+      }));
+    } catch (generateError) {
+      setError(generateError instanceof Error ? generateError.message : "Could not generate replies.");
+    } finally {
+      setGeneratingMessageId("");
+    }
+  }
+
+  async function copyReply(replyId: string, reply: string) {
+    await navigator.clipboard.writeText(reply);
+    setCopiedReplyId(replyId);
   }
 
   if (!account) {
@@ -206,6 +261,64 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
                       : "Approve auto-reply"}
                 </button>
               </div>
+
+              {message.autoReplyApproved ? (
+                <div className="mt-4 rounded-lg border border-mint/20 bg-mint/10 p-4">
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                    <div>
+                      <p className="text-sm font-semibold text-ink">Reply options</p>
+                      <p className="mt-1 text-xs text-ink/55">
+                        Approved sender. Generate safe draft replies before sending manually.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => generateRepliesForMessage(message)}
+                      disabled={generatingMessageId === message.id}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-ink px-3 py-2 text-sm font-semibold text-white transition hover:bg-plum disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {generatingMessageId === message.id ? (
+                        <Loader2 className="animate-spin" size={16} />
+                      ) : (
+                        <Send size={16} />
+                      )}
+                      {generatingMessageId === message.id ? "Generating..." : "Generate replies"}
+                    </button>
+                  </div>
+
+                  {replyDrafts[message.id] ? (
+                    <div className="mt-4 grid gap-3">
+                      <div className="grid gap-2 text-xs text-ink/60 sm:grid-cols-3">
+                        <span>Mood: {replyDrafts[message.id].fanMood}</span>
+                        <span>Urgency: {replyDrafts[message.id].urgencyScore}/10</span>
+                        <span>Spend: {replyDrafts[message.id].spendingPotential}</span>
+                      </div>
+                      {replyDrafts[message.id].replies.map((reply, index) => {
+                        const replyId = `${message.id}-${index}`;
+
+                        return (
+                          <div key={replyId} className="rounded-lg bg-white p-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-plum">
+                                Option {index + 1}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => copyReply(replyId, reply)}
+                                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:border-coral hover:text-coral"
+                              >
+                                <Copy size={14} />
+                                {copiedReplyId === replyId ? "Copied" : "Copy"}
+                              </button>
+                            </div>
+                            <p className="mt-2 text-sm leading-6 text-ink/72">{reply}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </article>
           ))
         ) : (
