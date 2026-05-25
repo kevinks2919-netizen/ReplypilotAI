@@ -3,7 +3,7 @@
 import { Copy, Loader2, Mail, RefreshCw, Send, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { GmailMessagePreview, PublicConnectedAccount } from "@/lib/connected-accounts";
-import type { SpendingPotential } from "@/lib/mock-ai";
+import type { SpendingPotential, Tone } from "@/lib/mock-ai";
 import type { PublicTrialAccount } from "@/lib/trial-auth";
 
 type GmailMessagesResponse = {
@@ -21,6 +21,8 @@ type GeneratedReplySet = {
   error?: string;
 };
 
+const toneOptions: Tone[] = ["friendly", "playful", "flirty", "professional", "funny"];
+
 export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccount | null }) {
   const [connectedAccounts, setConnectedAccounts] = useState<PublicConnectedAccount[]>([]);
   const [messages, setMessages] = useState<GmailMessagePreview[]>([]);
@@ -29,6 +31,7 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
   const [isLoading, setIsLoading] = useState(false);
   const [pendingSender, setPendingSender] = useState("");
   const [generatingMessageId, setGeneratingMessageId] = useState("");
+  const [messageTones, setMessageTones] = useState<Record<string, Tone>>({});
   const [copiedReplyId, setCopiedReplyId] = useState("");
   const [sendingReplyId, setSendingReplyId] = useState("");
   const [sentReplyId, setSentReplyId] = useState("");
@@ -115,7 +118,7 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          tone: "professional",
+          tone: messageTones[message.id] ?? "professional",
           message: `From: ${message.from}\nSubject: ${message.subject}\nMessage preview: ${message.snippet}`
         })
       });
@@ -328,19 +331,38 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
                         Approved sender. Generate safe draft replies before sending manually.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => generateRepliesForMessage(message)}
-                      disabled={generatingMessageId === message.id}
-                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-ink px-3 py-2 text-sm font-semibold text-white transition hover:bg-plum disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {generatingMessageId === message.id ? (
-                        <Loader2 className="animate-spin" size={16} />
-                      ) : (
-                        <Send size={16} />
-                      )}
-                      {generatingMessageId === message.id ? "Generating..." : "Generate replies"}
-                    </button>
+                    <div className="grid gap-2 sm:grid-cols-[minmax(9rem,1fr)_auto]">
+                      <select
+                        value={messageTones[message.id] ?? "professional"}
+                        onChange={(event) =>
+                          setMessageTones((currentTones) => ({
+                            ...currentTones,
+                            [message.id]: event.target.value as Tone
+                          }))
+                        }
+                        className="min-h-10 rounded-lg border border-ink/10 bg-white px-3 py-2 text-sm font-semibold capitalize text-ink outline-none transition focus:border-coral focus:ring-4 focus:ring-coral/15"
+                        aria-label="Reply tone"
+                      >
+                        {toneOptions.map((tone) => (
+                          <option key={tone} value={tone}>
+                            {tone}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => generateRepliesForMessage(message)}
+                        disabled={generatingMessageId === message.id}
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-ink px-3 py-2 text-sm font-semibold text-white transition hover:bg-plum disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {generatingMessageId === message.id ? (
+                          <Loader2 className="animate-spin" size={16} />
+                        ) : (
+                          <Send size={16} />
+                        )}
+                        {generatingMessageId === message.id ? "Generating..." : "Generate replies"}
+                      </button>
+                    </div>
                   </div>
 
                   {replyDrafts[message.id] ? (
