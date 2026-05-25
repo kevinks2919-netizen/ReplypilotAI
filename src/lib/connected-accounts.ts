@@ -145,6 +145,63 @@ export async function listGmailMessages(ownerAccountId: string) {
   return previews;
 }
 
+export async function sendGmailReply(input: {
+  ownerAccountId: string;
+  threadId: string;
+  to: string;
+  subject: string;
+  body: string;
+}) {
+  const account = await getGmailAccount(input.ownerAccountId);
+
+  if (!account) {
+    throw new Error("Connect Gmail before sending replies.");
+  }
+
+  const approvals = await getAutoReplyApprovals(input.ownerAccountId);
+  const isApproved = approvals.some(
+    (approval) =>
+      approval.provider === "gmail" &&
+      approval.status === "approved" &&
+      approval.sender_identifier.toLowerCase() === input.to.trim().toLowerCase()
+  );
+
+  if (!isApproved) {
+    throw new Error("This sender is not approved for ReplyPilot sending.");
+  }
+
+  const freshAccount = await refreshGmailAccountIfNeeded(account);
+  const subject = input.subject.toLowerCase().startsWith("re:")
+    ? input.subject
+    : `Re: ${input.subject}`;
+  const rawMessage = [
+    `To: ${input.to}`,
+    `From: ${freshAccount.provider_email}`,
+    `Subject: ${subject}`,
+    "Content-Type: text/plain; charset=utf-8",
+    "",
+    input.body
+  ].join("\r\n");
+
+  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${freshAccount.access_token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      raw: toBase64Url(rawMessage),
+      threadId: input.threadId
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  return (await response.json()) as { id: string; threadId: string };
+}
+
 export async function getAutoReplyApprovals(ownerAccountId: string) {
   const approvals = await readAutoReplyApprovals();
   return approvals.filter((approval) => approval.owner_account_id === ownerAccountId);
@@ -528,6 +585,14 @@ function getHeader(headers: { name?: string; value?: string }[], name: string) {
 function extractEmailAddress(value: string) {
   const match = value.match(/<([^>]+)>/);
   return (match?.[1] ?? value).trim().toLowerCase();
+}
+
+function toBase64Url(value: string) {
+  return Buffer.from(value, "utf-8")
+    .toString("base64")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
 }
 
 function isConnectedAccount(value: unknown): value is ConnectedAccount {

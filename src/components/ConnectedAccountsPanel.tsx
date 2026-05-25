@@ -30,6 +30,8 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
   const [pendingSender, setPendingSender] = useState("");
   const [generatingMessageId, setGeneratingMessageId] = useState("");
   const [copiedReplyId, setCopiedReplyId] = useState("");
+  const [sendingReplyId, setSendingReplyId] = useState("");
+  const [sentReplyId, setSentReplyId] = useState("");
 
   const gmailAccount = connectedAccounts.find((item) => item.provider === "gmail");
 
@@ -127,6 +129,7 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
         ...currentDrafts,
         [message.id]: payload
       }));
+      setSentReplyId("");
     } catch (generateError) {
       setError(generateError instanceof Error ? generateError.message : "Could not generate replies.");
     } finally {
@@ -134,9 +137,63 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
     }
   }
 
+  function updateReplyDraft(messageId: string, index: number, value: string) {
+    setReplyDrafts((currentDrafts) => {
+      const draft = currentDrafts[messageId];
+      if (!draft) return currentDrafts;
+
+      return {
+        ...currentDrafts,
+        [messageId]: {
+          ...draft,
+          replies: draft.replies.map((reply, replyIndex) =>
+            replyIndex === index ? value : reply
+          )
+        }
+      };
+    });
+  }
+
   async function copyReply(replyId: string, reply: string) {
     await navigator.clipboard.writeText(reply);
     setCopiedReplyId(replyId);
+  }
+
+  async function sendReply(message: GmailMessagePreview, replyId: string, reply: string) {
+    const confirmed = window.confirm(
+      `Send this reply to ${message.fromEmail}? Review the text carefully before confirming.`
+    );
+
+    if (!confirmed) return;
+
+    setSendingReplyId(replyId);
+    setError("");
+
+    try {
+      const response = await fetch("/api/connect/gmail/send-reply", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          threadId: message.threadId,
+          to: message.fromEmail,
+          subject: message.subject,
+          body: reply
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(typeof payload.error === "string" ? payload.error : "Could not send reply.");
+      }
+
+      setSentReplyId(replyId);
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Could not send reply.");
+    } finally {
+      setSendingReplyId("");
+    }
   }
 
   if (!account) {
@@ -302,16 +359,41 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
                               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-plum">
                                 Option {index + 1}
                               </p>
-                              <button
-                                type="button"
-                                onClick={() => copyReply(replyId, reply)}
-                                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:border-coral hover:text-coral"
-                              >
-                                <Copy size={14} />
-                                {copiedReplyId === replyId ? "Copied" : "Copy"}
-                              </button>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => copyReply(replyId, reply)}
+                                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:border-coral hover:text-coral"
+                                >
+                                  <Copy size={14} />
+                                  {copiedReplyId === replyId ? "Copied" : "Copy"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => sendReply(message, replyId, reply)}
+                                  disabled={sendingReplyId === replyId || reply.trim().length === 0}
+                                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white transition hover:bg-plum disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {sendingReplyId === replyId ? (
+                                    <Loader2 className="animate-spin" size={14} />
+                                  ) : (
+                                    <Send size={14} />
+                                  )}
+                                  {sentReplyId === replyId
+                                    ? "Sent"
+                                    : sendingReplyId === replyId
+                                      ? "Sending..."
+                                      : "Send"}
+                                </button>
+                              </div>
                             </div>
-                            <p className="mt-2 text-sm leading-6 text-ink/72">{reply}</p>
+                            <textarea
+                              value={reply}
+                              onChange={(event) =>
+                                updateReplyDraft(message.id, index, event.target.value)
+                              }
+                              className="mt-2 min-h-28 w-full resize-y rounded-lg border border-ink/10 bg-mist/45 p-3 text-sm leading-6 text-ink/72 outline-none transition focus:border-coral focus:ring-4 focus:ring-coral/15"
+                            />
                           </div>
                         );
                       })}
