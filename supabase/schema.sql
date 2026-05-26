@@ -61,6 +61,21 @@ create table if not exists public.message_dismissals (
   unique(owner_account_id, provider, message_identifier)
 );
 
+create table if not exists public.fan_memories (
+  id uuid primary key default gen_random_uuid(),
+  owner_account_id uuid not null references public.trial_accounts(id) on delete cascade,
+  provider text not null check (provider in ('gmail', 'x', 'tiktok', 'onlyfans')),
+  fan_identifier text not null,
+  fan_label text not null,
+  summary text not null default '',
+  last_inbound_message text not null default '',
+  last_reply_sent text not null default '',
+  interaction_count integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(owner_account_id, provider, fan_identifier)
+);
+
 create table if not exists public.tiktok_connection_requests (
   id uuid primary key default gen_random_uuid(),
   owner_account_id uuid not null references public.trial_accounts(id) on delete cascade,

@@ -124,6 +124,28 @@ create table if not exists public.message_dismissals (
 Dismissals are message-specific, not sender-specific. If a new email or DM arrives
 from the same sender, it can still appear for review again.
 
+Create this table to store lightweight per-fan memory for reply continuity:
+
+```sql
+create table if not exists public.fan_memories (
+  id uuid primary key default gen_random_uuid(),
+  owner_account_id uuid not null references public.trial_accounts(id) on delete cascade,
+  provider text not null check (provider in ('gmail', 'x', 'tiktok', 'onlyfans')),
+  fan_identifier text not null,
+  fan_label text not null,
+  summary text not null default '',
+  last_inbound_message text not null default '',
+  last_reply_sent text not null default '',
+  interaction_count integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(owner_account_id, provider, fan_identifier)
+);
+```
+
+Fan memory updates after a reviewed reply is sent from ReplyPilot. It is used only
+for continuity and should stay client-account scoped.
+
 TikTok direct message automation is not enabled in this MVP. Add it only through official
 TikTok-approved messaging access or an approved partner integration.
 

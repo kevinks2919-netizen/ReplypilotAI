@@ -286,6 +286,8 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
         },
         body: JSON.stringify({
           tone: messageTones[message.id] ?? "professional",
+          provider: "gmail",
+          fanIdentifier: message.fromEmail,
           message: `From: ${message.from}\nSubject: ${message.subject}\nMessage preview: ${message.snippet}`
         })
       });
@@ -349,7 +351,9 @@ export function ConnectedAccountsPanel({ account }: { account: PublicTrialAccoun
           threadId: message.threadId,
           to: message.fromEmail,
           subject: message.subject,
-          body: reply
+          body: reply,
+          inboundSnippet: message.snippet,
+          fanLabel: message.from
         })
       });
       const payload = await response.json();

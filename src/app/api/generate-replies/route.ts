@@ -4,11 +4,14 @@ import {
   isTone,
   type SpendingPotential
 } from "@/lib/mock-ai";
+import { formatFanMemoryForPrompt, getFanMemory } from "@/lib/fan-memory";
 import { incrementReplyUsage, requireActiveTrialAccount } from "@/lib/trial-auth";
 
 type GenerateRepliesRequest = {
   message?: unknown;
   tone?: unknown;
+  provider?: unknown;
+  fanIdentifier?: unknown;
 };
 
 type GenerateRepliesResponse = {
@@ -53,6 +56,8 @@ export async function POST(request: NextRequest) {
 
   const message = typeof body.message === "string" ? body.message.trim() : "";
   const tone = body.tone;
+  const provider = normalizeMemoryProvider(body.provider);
+  const fanIdentifier = typeof body.fanIdentifier === "string" ? body.fanIdentifier.trim() : "";
 
   if (!message) {
     return NextResponse.json({ error: "Message is required." }, { status: 400 });
@@ -61,6 +66,16 @@ export async function POST(request: NextRequest) {
   if (!isTone(tone)) {
     return NextResponse.json({ error: "Tone is invalid." }, { status: 400 });
   }
+
+  const fanMemory =
+    provider && fanIdentifier
+      ? await getFanMemory({
+          ownerAccountId: trial.account.id,
+          provider,
+          fanIdentifier
+        }).catch(() => null)
+      : null;
+  const fanMemoryPrompt = formatFanMemoryForPrompt(fanMemory);
 
   if (!hasUsableOpenAiKey(process.env.OPENAI_API_KEY)) {
     const account = await incrementReplyUsage(trial.account);
@@ -80,8 +95,8 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         model: process.env.OPENAI_MODEL ?? "gpt-5.2",
         instructions:
-          "You are an assistant for a creator agency inbox team. Generate platform-safe, non-explicit, friendly replies. Do not mention adult content, sexual acts, nudity, or anything unsafe. Avoid manipulation, pressure, or promises. Keep replies warm, concise, and suitable for mainstream social platforms.",
-        input: `Incoming fan message: ${message}\nRequested tone: ${tone}\nReturn exactly three reply options plus mood analysis.`,
+          "You are an assistant for a creator agency inbox team. Generate platform-safe, non-explicit, friendly replies. Do not mention adult content, sexual acts, nudity, or anything unsafe. Avoid manipulation, pressure, or promises. Keep replies warm, concise, and suitable for mainstream social platforms. If fan memory is provided, use it only for continuity and personalization; do not reveal that memory exists.",
+        input: `${fanMemoryPrompt ? `${fanMemoryPrompt}\n\n` : ""}Incoming fan message: ${message}\nRequested tone: ${tone}\nReturn exactly three reply options plus mood analysis.`,
         text: {
           format: {
             type: "json_schema",
@@ -197,4 +212,12 @@ function hasUsableOpenAiKey(value: string | undefined) {
   if (!value) return false;
   if (value === "your_real_key_here" || value === "your_api_key_here") return false;
   return value.length >= 20;
+}
+
+function normalizeMemoryProvider(value: unknown) {
+  if (value === "gmail" || value === "x" || value === "tiktok" || value === "onlyfans") {
+    return value;
+  }
+
+  return null;
 }
