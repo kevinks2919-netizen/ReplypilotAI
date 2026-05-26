@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight,
   BarChart3,
@@ -221,6 +222,39 @@ export default function Home() {
               <p className="mt-2 text-sm leading-6 text-ink/64">{copy as string}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="border-y border-ink/8 bg-white/58 px-5 py-16 sm:px-8" id="demo">
+        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-coral">
+              Product demo
+            </p>
+            <h2 className="mt-3 text-3xl font-semibold text-ink sm:text-4xl">
+              See the client workflow before booking a call.
+            </h2>
+            <p className="mt-4 text-base leading-7 text-ink/68">
+              Watch how a client moves from login to reply generation, connector
+              requests, Gmail approval, safe dismissals, fan memory, and admin tracking.
+            </p>
+            <Link
+              href="/demo"
+              className="mt-6 inline-flex min-h-11 items-center justify-center rounded-lg bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-plum"
+            >
+              Open full demo page
+            </Link>
+          </div>
+          <div className="rounded-lg border border-ink/10 bg-white/88 p-3 shadow-soft">
+            <Image
+              src="/demo/replypilot-client-walkthrough.gif"
+              alt="Animated walkthrough showing how clients use ReplyPilot AI"
+              width={1280}
+              height={720}
+              unoptimized
+              className="aspect-video w-full rounded-lg object-cover"
+            />
+          </div>
         </div>
       </section>
 
