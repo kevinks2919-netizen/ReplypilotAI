@@ -59,6 +59,7 @@ export default function Home() {
           <a href="#pricing" className="transition hover:text-coral">Pricing</a>
           <a href="#faq" className="transition hover:text-coral">FAQ</a>
           <Link href="/connected-accounts" className="transition hover:text-coral">Integrations</Link>
+          <Link href="/demo" className="transition hover:text-coral">Demo</Link>
           <Link href="/outreach-kit" className="transition hover:text-coral">Outreach Kit</Link>
           <Link href="/admin" className="transition hover:text-coral">Admin</Link>
         </div>
@@ -120,6 +121,12 @@ export default function Home() {
             >
               Book Demo
             </a>
+            <Link
+              href="/demo"
+              className="inline-flex min-h-12 items-center justify-center rounded-lg border border-ink/10 bg-white/80 px-5 py-3 text-sm font-semibold text-ink transition hover:border-coral hover:text-coral"
+            >
+              Watch Demo
+            </Link>
             <Link
               href="/outreach-kit"
               className="inline-flex min-h-12 items-center justify-center rounded-lg border border-ink/10 bg-white/80 px-5 py-3 text-sm font-semibold text-ink transition hover:border-coral hover:text-coral"
