@@ -68,6 +68,12 @@ export default function DemoPage() {
               >
                 View admin
               </Link>
+              <Link
+                href="/google-verification-demo"
+                className="inline-flex min-h-12 items-center justify-center rounded-lg border border-ink/10 bg-white/80 px-5 py-3 text-sm font-semibold text-ink transition hover:border-coral hover:text-coral"
+              >
+                Google verification demo
+              </Link>
             </div>
           </div>
 
